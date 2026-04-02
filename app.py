@@ -12,71 +12,75 @@ from flask_cors import CORS
 import numpy as np
 from dotenv import load_dotenv
 
-# Configuración de logs detallada
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - [%(levelname)s] - %(message)s'
-)
+# Logger Config
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Cargar variables de entorno
+# Cargar .env de raíz
 load_dotenv()
 
-# Configuración de Rutas (PYTHONPATH)
+# Setup Path para ver 'trading_bot' como paquete
 TOP_DIR = os.path.dirname(os.path.abspath(__file__))
-# Añadimos tanto el raíz como trading_bot al path
 if TOP_DIR not in sys.path:
     sys.path.insert(0, TOP_DIR)
-BOT_DIR = os.path.join(TOP_DIR, 'trading_bot')
-if BOT_DIR not in sys.path:
-    sys.path.insert(0, BOT_DIR)
 
-# UTF-8 Encoding
+# UTF-8 for Windows Console
 if sys.stdout.encoding != 'utf-8':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-# Estado global alpaca
-ALPACA_API_KEY = os.getenv('ALPACA_API_KEY')
-ALPACA_SECRET_KEY = os.getenv('ALPACA_SECRET_KEY')
-ALPACA_ENABLED = bool(ALPACA_API_KEY and ALPACA_SECRET_KEY)
-
-# Funciones Mockup iniciales (Evitan NameError si falla import)
+# Mockups por defecto
 def obtener_cuenta(): return None
 def obtener_posiciones_abiertas(): return []
-def colocar_orden_mercado(*args, **kwargs): return None
-def obtener_datos_alpaca(*args, **kwargs): return None
+def colocar_orden_mercado(*args,**kw): return None
+def obtener_datos_alpaca(*args,**kw): return None
 
-# Bloque de importación real con log detallado
+# Importación Real
 try:
-    logger.info(f"Intentando cargar módulos desde: {BOT_DIR}")
-    
-    # Intentamos importación absoluta desde trading_bot
-    from bot.trading_bot import TradingBot
-    from config import (
-        CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS, WATCHLIST
+    logger.info("Importando módulos de trading_bot...")
+    # Usamos importación de paquete completa
+    from trading_bot.bot.trading_bot import TradingBot
+    from trading_bot.config import (
+        CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS, WATCHLIST,
+        ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_BASE_URL
     )
-    from data.alpaca_feed import obtener_datos_alpaca as real_obtener_datos
-    from ejecucion.alpaca_orders import obtener_cuenta as real_obtener_cuenta, \
-                                       obtener_posiciones_abiertas as real_obtener_pos, \
-                                       colocar_orden_mercado as real_colocar_orden
+    from trading_bot.data.alpaca_feed import obtener_datos_alpaca as real_feed
+    from trading_bot.ejecucion.alpaca_orders import (
+        obtener_cuenta as real_account,
+        obtener_posiciones_abiertas as real_pos,
+        colocar_orden_mercado as real_order
+    )
     
-    # Reasignación
-    obtener_datos_alpaca = real_obtener_datos
-    obtener_cuenta = real_obtener_cuenta
-    obtener_posiciones_abiertas = real_obtener_pos
-    colocar_orden_mercado = real_colocar_orden
+    # Reasignar
+    obtener_datos_alpaca = real_feed
+    obtener_cuenta = real_account
+    obtener_posiciones_abiertas = real_pos
+    colocar_orden_mercado = real_order
     
-    logger.info("✅ Todos los módulos se cargaron correctamente.")
+    # Detectar si Alpaca está activo
+    ALPACA_ENABLED = bool(ALPACA_API_KEY and ALPACA_SECRET_KEY)
+    
+    if ALPACA_ENABLED:
+        logger.info(f"✅ Llaves detectadas (ID: {ALPACA_API_KEY[:5]}***). Probando conexión...")
+        try:
+            test_acc = obtener_cuenta()
+            if test_acc:
+                logger.info(f"🚀 Conexión con Alpaca EXITOSA. Equity: {test_acc.get('nav')}")
+            else:
+                logger.error("❌ Alpaca API devolvió datos vacíos. Revisa tus llaves en Secrets.")
+                ALPACA_ENABLED = False
+        except Exception as conn_err:
+            logger.error(f"❌ Fallo al conectar con la API de Alpaca: {conn_err}")
+            ALPACA_ENABLED = False
+    else:
+        logger.warning("⚠️ Sin llaves de Alpaca. Iniciando en MODO SIMULADO.")
 
 except Exception:
-    error_msg = traceback.format_exc()
-    logger.error(f"❌ FALLO CRÍTICO AL CARGAR MÓDULOS:\n{error_msg}")
-    
-    # Valores de emergencia
+    logger.error(f"🌋 ERROR DE IMPORTACIÓN:\n{traceback.format_exc()}")
     WATCHLIST = ['AAPL', 'TSLA']
     CAPITAL_INICIAL = 10000.0
     RIESGO_POR_OPERACION = 0.02
     MIN_CONFLUENCIAS = 3
+    ALPACA_ENABLED = False
 
 app = Flask(__name__)
 CORS(app)
@@ -90,93 +94,58 @@ def safe_float(val, ndigits=2):
     try:
         if val is None or (isinstance(val, (float, np.floating, np.float64)) and np.isnan(val)): return 0.0
         return round(float(val), ndigits)
-    except:
-        return 0.0
+    except: return 0.0
 
-# LOOP DE TRADING
+# LOOP TRADING
 def trading_loop():
     global AUTO_TRADING_ACTIVE, BOT_HISTORY
     while True:
         if AUTO_TRADING_ACTIVE:
-            logger.info("--- 🔄 Ciclo Automático Iniciado ---")
+            logger.info("--- LOOP AUTOMATICO ---")
             for symbol in ACTIVE_SYMBOLS:
                 try:
-                    # 1. Obtener datos
                     if ALPACA_ENABLED:
                         datos = obtener_datos_alpaca(symbol=symbol)
                     else:
-                        from data.simulador import generar_datos
+                        from trading_bot.data.simulador import generar_datos
                         datos = generar_datos()
 
-                    if datos is None or datos.empty:
-                        logger.warning(f"⚠️ {symbol}: Sin datos.")
-                        continue
+                    if datos is None or datos.empty: continue
 
-                    # 2. Análisis
                     bot = TradingBot(datos, CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS)
                     bot.ejecutar()
 
                     dec = bot.decision
                     dir_ = dec['direccion']
-                    
-                    LAST_RUN_LOG[symbol] = {
-                        'time': datetime.datetime.now().strftime('%H:%M:%S'),
-                        'dir': dir_,
-                        'reason': dec['razon']
-                    }
+                    LAST_RUN_LOG[symbol] = {'time': datetime.datetime.now().strftime('%H:%M:%S'), 'dir': dir_, 'reason': dec['razon']}
 
-                    # 3. Orden Real
                     if dir_ != 'NEUTRAL' and ALPACA_ENABLED:
-                        try:
-                            posiciones = obtener_posiciones_abiertas()
-                            ya_en_posicion = any(p['instrumento'] == symbol for p in posiciones) if posiciones else False
-                            
-                            if not ya_en_posicion:
-                                side = 'buy' if dir_ == 'LONG' else 'sell'
-                                ges = dec.get('gestion', {})
-                                qty = int(ges.get('tamano_posicion', 1))
-                                if qty > 0:
-                                    res = colocar_orden_mercado(symbol, qty, side, ges.get('take_profit'), ges.get('stop_loss'))
-                                    logger.info(f"💰 REAL ORDER: {side} {qty} {symbol}")
-                                    BOT_HISTORY.insert(0, {
-                                        'time': datetime.datetime.now().strftime('%H:%M:%S'),
-                                        'symbol': symbol,
-                                        'type': f"REAL {dir_}",
-                                        'price': safe_float(datos['close'].iloc[-1]),
-                                        'reason': f"Ejecutado: {side} {qty}"
-                                    })
-                        except Exception as e_order:
-                            logger.error(f"❌ Error Alpaca ({symbol}): {e_order}")
-                    
+                        pos = obtener_posiciones_abiertas()
+                        if not any(p['instrumento'] == symbol for p in pos):
+                            side = 'buy' if dir_ == 'LONG' else 'sell'
+                            ges = dec.get('gestion', {})
+                            qty = int(ges.get('tamano_posicion', 1))
+                            if qty > 0:
+                                colocar_orden_mercado(symbol, qty, side, ges.get('take_profit'), ges.get('stop_loss'))
+                                BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M:%S'), 'symbol': symbol, 'type': f"REAL {dir_}", 'price': safe_float(datos['close'].iloc[-1]), 'reason': f"Ejecutado en Alpaca"})
                     elif dir_ != 'NEUTRAL':
-                        BOT_HISTORY.insert(0, {
-                            'time': datetime.datetime.now().strftime('%H:%M:%S'),
-                            'symbol': symbol,
-                            'type': f"SIM {dir_}",
-                            'price': safe_float(datos['close'].iloc[-1]),
-                            'reason': dec['razon']
-                        })
+                        BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M:%S'), 'symbol': symbol, 'type': f"SIM {dir_}", 'price': safe_float(datos['close'].iloc[-1]), 'reason': dec['razon']})
                     
-                    if len(BOT_HISTORY) > 50: BOT_HISTORY.pop()
+                    if len(BOT_HISTORY) > 20: BOT_HISTORY.pop()
 
-                except Exception as e:
-                    logger.error(f"❌ Error en {symbol}: {e}")
-            
-            logger.info("--- ✅ Ciclo Fin. Esperando 1m ---")
-            time.sleep(60) 
-        else:
-            time.sleep(5) 
+                except Exception as e: logger.error(f"Error loop {symbol}: {e}")
+            time.sleep(60)
+        else: time.sleep(5)
 
 threading.Thread(target=trading_loop, daemon=True).start()
 
-# API ROUTES
+# ROUTES
 @app.route('/')
-def index(): return render_template('index.html')
+def home(): return render_template('index.html')
 
 @app.route('/api/status')
-def api_status():
+def status():
     return jsonify({
-        'status': 'online',
         'modo': 'ALPACA' if ALPACA_ENABLED else 'SIMULADOR',
         'auto_trading': AUTO_TRADING_ACTIVE,
         'symbols': ACTIVE_SYMBOLS,
@@ -184,39 +153,31 @@ def api_status():
     })
 
 @app.route('/api/toggle-auto', methods=['POST'])
-def api_toggle_auto():
+def toggle():
     global AUTO_TRADING_ACTIVE
     AUTO_TRADING_ACTIVE = not AUTO_TRADING_ACTIVE
     return jsonify({'ok': True, 'auto_trading': AUTO_TRADING_ACTIVE})
 
 @app.route('/api/account')
-def api_account():
+def account():
     try:
         if ALPACA_ENABLED:
             cuenta = obtener_cuenta()
-            if not cuenta:
-                return jsonify({'error': 'La API de Alpaca no devolvió datos de cuenta (revisa las llaves)'}), 500
-                
+            if not cuenta: return jsonify({'error': 'La API de Alpaca no respondió. Revisa tus llaves.'}), 500
             pos = obtener_posiciones_abiertas()
             return jsonify({
                 'equity': safe_float(cuenta.get('nav', 0)),
                 'pl_total': safe_float(cuenta.get('pl', 0)),
                 'posiciones': [{
-                    'symbol': p['instrumento'],
-                    'qty': float(p['unidades']),
-                    'entry_price': safe_float(p['precio_medio']),
-                    'current_price': safe_float(p.get('precio_actual', 0)),
-                    'pl': safe_float(p['pl']),
-                    'pl_pct': safe_float(p.get('pl_pct', 0))
+                    'symbol': p['instrumento'], 'qty': float(p['unidades']), 'entry_price': safe_float(p['precio_medio']),
+                    'current_price': safe_float(p.get('precio_actual', 0)), 'pl': safe_float(p['pl']), 'pl_pct': safe_float(p.get('pl_pct', 0))
                 } for p in pos],
                 'history': BOT_HISTORY
             })
         else:
-            return jsonify({
-                'equity': 10000.0, 'pl_total': 0.0, 'posiciones': [], 'history': BOT_HISTORY
-            })
+            return jsonify({'equity': 10000, 'pl_total': 0, 'posiciones': [], 'history': BOT_HISTORY})
     except Exception as e:
-        logger.error(f"CRASH api/account: {str(e)}")
+        logger.error(f"Error account route: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
