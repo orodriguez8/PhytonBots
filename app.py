@@ -28,6 +28,11 @@ if TOP_DIR not in sys.path:
 if sys.stdout.encoding != 'utf-8':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
+# Identificar claves Alpaca desde el entorno (no desde config.py)
+ALPACA_API_KEY = os.getenv('ALPACA_API_KEY')
+ALPACA_SECRET_KEY = os.getenv('ALPACA_SECRET_KEY')
+ALPACA_BASE_URL = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
+
 # Mockups por defecto
 def obtener_cuenta(): return None
 def obtener_posiciones_abiertas(): return []
@@ -40,8 +45,7 @@ try:
     # Usamos importación de paquete completa
     from trading_bot.bot.trading_bot import TradingBot
     from trading_bot.config import (
-        CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS, WATCHLIST,
-        ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_BASE_URL
+        CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS, WATCHLIST
     )
     from trading_bot.data.alpaca_feed import obtener_datos_alpaca as real_feed
     from trading_bot.ejecucion.alpaca_orders import (
@@ -72,7 +76,7 @@ try:
             logger.error(f"❌ Fallo al conectar con la API de Alpaca: {conn_err}")
             ALPACA_ENABLED = False
     else:
-        logger.warning("⚠️ Sin llaves de Alpaca. Iniciando en MODO SIMULADO.")
+        logger.warning("⚠️ Sin llaves de Alpaca. Iniciando en MODO SIMULADOR.")
 
 except Exception:
     logger.error(f"🌋 ERROR DE IMPORTACIÓN:\n{traceback.format_exc()}")
