@@ -15,26 +15,38 @@ from dotenv import load_dotenv
 # Configuración de logs
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Cargar variables de entorno (Desde el raíz del proyecto)
-load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env'))
+# Cargar variables de entorno
+# Primero intentamos la raíz y luego la carpeta trading_bot
+load_dotenv()
+load_dotenv(os.path.join(os.path.abspath(os.path.dirname(__file__)), 'trading_bot', '.env'))
 
-# Añadir el directorio trading_bot al PYTHONPATH
+# PYTHONPATH setup
 TOP_DIR = os.path.dirname(os.path.abspath(__file__))
 BOT_DIR = os.path.join(TOP_DIR, 'trading_bot')
 sys.path.insert(0, BOT_DIR)
 
-# Forzar codificación UTF-8
+# UTF-8 Encoding
 if sys.stdout.encoding != 'utf-8':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 # Estado global
 ALPACA_API_KEY = os.getenv('ALPACA_API_KEY')
 ALPACA_SECRET_KEY = os.getenv('ALPACA_SECRET_KEY')
+ALPACA_BASE_URL = os.getenv('ALPACA_BASE_URL')
 ALPACA_ENABLED = bool(ALPACA_API_KEY and ALPACA_SECRET_KEY)
+
+# Log status on start
+logger.info("=== INICIO DE SERVIDOR ===")
+logger.info(f"ALPACA_ENABLED: {ALPACA_ENABLED}")
+if ALPACA_ENABLED:
+    logger.info(f"API_KEY: {ALPACA_API_KEY[:4]}...{ALPACA_API_KEY[-4:] if len(ALPACA_API_KEY)>4 else ''}")
+    logger.info(f"BASE_URL: {ALPACA_BASE_URL}")
+else:
+    logger.warning("ALERTA: ALPACA_API_KEY o ALPACA_SECRET_KEY no detectados. Usando simulador.")
 
 # Importaciones del bot
 try:
@@ -44,15 +56,9 @@ try:
     )
     from data.alpaca_feed import obtener_datos_alpaca
     from ejecucion.alpaca_orders import obtener_cuenta, obtener_posiciones_abiertas, colocar_orden_mercado
-    
-    logger.info(f"MODO DETECTADO: {'ALPACA REAL/PAPER' if ALPACA_ENABLED else 'SIMULADOR'}")
-    if ALPACA_ENABLED:
-        logger.info(f"API KEY: {ALPACA_API_KEY[:5]}***")
-        logger.info(f"BASE URL: {os.getenv('ALPACA_BASE_URL')}")
-
 except ImportError as e:
     logger.error(f"Error importando módulos del bot: {e}")
-    WATCHLIST = ['AAPL', 'TSLA'] # Fallback
+    WATCHLIST = ['AAPL', 'TSLA']
     CAPITAL_INICIAL = 10000.0
     RIESGO_POR_OPERACION = 0.02
     MIN_CONFLUENCIAS = 3
@@ -66,8 +72,11 @@ BOT_HISTORY = []
 LAST_RUN_LOG = {} # {symbol: {time, result}}
 
 def safe_float(val, ndigits=2):
-    if val is None or (isinstance(val, (float, np.floating, np.float64)) and np.isnan(val)): return 0.0
-    return round(float(val), ndigits)
+    try:
+        if val is None or (isinstance(val, (float, np.floating, np.float64)) and np.isnan(val)): return 0.0
+        return round(float(val), ndigits)
+    except:
+        return 0.0
 
 def trading_loop():
     global AUTO_TRADING_ACTIVE, BOT_HISTORY
@@ -76,61 +85,54 @@ def trading_loop():
             logger.info("--- Iniciando ciclo automático de trading ---")
             for symbol in ACTIVE_SYMBOLS:
                 try:
-                    # 1. Obtener datos
                     if ALPACA_ENABLED:
                         datos = obtener_datos_alpaca(symbol=symbol)
                     else:
                         from data.simulador import generar_datos
                         datos = generar_datos()
 
-                    # 2. Ejecutar Bot
                     bot = TradingBot(datos, CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS)
                     bot.ejecutar()
 
                     dec = bot.decision
                     dir_ = dec['direccion']
                     
-                    # Registrar log individual para la UI
                     LAST_RUN_LOG[symbol] = {
                         'time': datetime.datetime.now().strftime('%H:%M:%S'),
                         'dir': dir_,
                         'reason': dec['razon']
                     }
 
-                    # 3. Ejecución automática si es necesario
-                    if dir_ != 'NEUTRAL' and ALPACA_ENABLED :
-                        posiciones = obtener_posiciones_abiertas()
-                        ya_en_posicion = any(p['instrumento'] == symbol for p in posiciones) if posiciones else False
-                        
-                        if not ya_en_posicion:
-                            side = 'buy' if dir_ == 'LONG' else 'sell'
-                            ges = dec.get('gestion', {})
-                            qty = int(ges.get('tamano_posicion', 1))
-                            if qty > 0:
-                                try:
+                    if dir_ != 'NEUTRAL' and ALPACA_ENABLED:
+                        try:
+                            posiciones = obtener_posiciones_abiertas()
+                            ya_en_posicion = any(p['instrumento'] == symbol for p in posiciones) if posiciones else False
+                            
+                            if not ya_en_posicion:
+                                side = 'buy' if dir_ == 'LONG' else 'sell'
+                                ges = dec.get('gestion', {})
+                                qty = int(ges.get('tamano_posicion', 1))
+                                if qty > 0:
                                     res = colocar_orden_mercado(symbol, qty, side, ges.get('take_profit'), ges.get('stop_loss'))
-                                    logger.info(f"ORDEN EJECUTADA EN ALPACA: {side} {qty} {symbol}")
-                                    action = {
+                                    logger.info(f"ORDEN REAL EJECUTADA: {side} {qty} {symbol}")
+                                    BOT_HISTORY.insert(0, {
                                         'time': datetime.datetime.now().strftime('%H:%M:%S'),
                                         'symbol': symbol,
                                         'type': f"REAL {dir_}",
                                         'price': safe_float(datos['close'].iloc[-1]),
-                                        'reason': f"Orden enviada a Alpaca: {side} {qty}"
-                                    }
-                                    BOT_HISTORY.insert(0, action)
-                                except Exception as order_error:
-                                    logger.error(f"Error ejecutando orden real: {order_error}")
+                                        'reason': f"Orden exitosa en Alpaca: {side} {qty}"
+                                    })
+                        except Exception as e_order:
+                            logger.error(f"Falla en ejecución Alpaca: {e_order}")
                     
-                    # Log general en el historial si hay señal (aunque sea simulada)
                     elif dir_ != 'NEUTRAL':
-                        action = {
+                        BOT_HISTORY.insert(0, {
                             'time': datetime.datetime.now().strftime('%H:%M:%S'),
                             'symbol': symbol,
                             'type': f"SIM {dir_}",
                             'price': safe_float(datos['close'].iloc[-1]),
                             'reason': dec['razon']
-                        }
-                        BOT_HISTORY.insert(0, action)
+                        })
                     
                     if len(BOT_HISTORY) > 50: BOT_HISTORY.pop()
 
@@ -142,7 +144,7 @@ def trading_loop():
         else:
             time.sleep(5) 
 
-# Iniciar hilo de trading
+# Start loop
 threading.Thread(target=trading_loop, daemon=True).start()
 
 @app.route('/')
@@ -169,18 +171,19 @@ def api_toggle_auto():
 def api_account():
     try:
         if ALPACA_ENABLED:
+            logger.debug("Consultando cuenta Alpaca...")
             cuenta = obtener_cuenta()
             pos = obtener_posiciones_abiertas()
             return jsonify({
-                'equity': safe_float(cuenta['nav']),
-                'pl_total': safe_float(cuenta['pl']),
+                'equity': safe_float(cuenta.get('nav', 0)),
+                'pl_total': safe_float(cuenta.get('pl', 0)),
                 'posiciones': [{
                     'symbol': p['instrumento'],
                     'qty': float(p['unidades']),
                     'entry_price': safe_float(p['precio_medio']),
-                    'current_price': safe_float(p['precio_actual']),
+                    'current_price': safe_float(p.get('precio_actual', 0)),
                     'pl': safe_float(p['pl']),
-                    'pl_pct': safe_float(p['pl_pct'])
+                    'pl_pct': safe_float(p.get('pl_pct', 0))
                 } for p in pos],
                 'history': BOT_HISTORY
             })
@@ -192,7 +195,7 @@ def api_account():
                 'history': BOT_HISTORY
             })
     except Exception as e:
-        logger.error(f"Error en /api/account: {e}\n{traceback.format_exc()}")
+        logger.error(f"CRASH en /api/account: {str(e)}\n{traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

@@ -30,12 +30,21 @@ async function fetchStatus() {
 async function fetchAccount() {
     try {
         const res = await fetch('/api/account');
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Server error');
+        }
         const data = await res.json();
         
-        document.getElementById('totalEquity').textContent = `$${data.equity.toLocaleString()}`;
+        if (data.equity !== undefined) {
+            document.getElementById('totalEquity').textContent = `$${data.equity.toLocaleString()}`;
+        }
+        
         const plEl = document.getElementById('totalPL');
-        plEl.textContent = `${data.pl_total >= 0 ? '+' : ''}$${data.pl_total.toFixed(2)}`;
-        plEl.className = `sub ${data.pl_total >= 0 ? 'up' : 'down'}`;
+        if (data.pl_total !== undefined) {
+            plEl.textContent = `${data.pl_total >= 0 ? '+' : ''}$${data.pl_total.toFixed(2)}`;
+            plEl.className = `sub ${data.pl_total >= 0 ? 'up' : 'down'}`;
+        }
 
         // Update positions
         const table = document.getElementById('positionsTable');
