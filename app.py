@@ -62,7 +62,7 @@ BOT_HISTORY = []
 LAST_RUN_LOG = {} # {symbol: {time, result}}
 
 def safe_float(val, ndigits=2):
-    if val is None or (isinstance(val, float) and np.isnan(val)): return 0.0
+    if val is None or (isinstance(val, (float, np.floating)) and np.isnan(val)): return 0.0
     return round(float(val), ndigits)
 
 def trading_loop():
@@ -95,9 +95,8 @@ def trading_loop():
 
                     # 3. Ejecución automática si es necesario
                     if dir_ != 'NEUTRAL' and ALPACA_ENABLED and colocar_orden_mercado:
-                        # Evitar duplicados simples (esto se podría hacer mejor comprobando posiciones actuales)
                         posiciones = obtener_posiciones_abiertas()
-                        ya_en_posicion = any(p.symbol == symbol for p in posiciones) if posiciones else False
+                        ya_en_posicion = any(p['instrumento'] == symbol for p in posiciones) if posiciones else False
                         
                         if not ya_en_posicion:
                             side = 'buy' if dir_ == 'LONG' else 'sell'
@@ -158,15 +157,15 @@ def api_account():
             cuenta = obtener_cuenta()
             pos = obtener_posiciones_abiertas()
             return jsonify({
-                'equity': safe_float(float(cuenta.equity)),
-                'pl_total': safe_float(float(cuenta.equity) - float(cuenta.last_equity)),
+                'equity': safe_float(cuenta['nav']),
+                'pl_total': safe_float(cuenta['pl']),
                 'posiciones': [{
-                    'symbol': p.symbol,
-                    'qty': float(p.qty),
-                    'entry_price': safe_float(float(p.avg_entry_price)),
-                    'current_price': safe_float(float(p.current_price)),
-                    'pl': safe_float(float(p.unrealized_pl)),
-                    'pl_pct': safe_float(float(p.unrealized_pl_pc) * 100)
+                    'symbol': p['instrumento'],
+                    'qty': float(p['unidades']),
+                    'entry_price': safe_float(p['precio_medio']),
+                    'current_price': safe_float(p['precio_actual']),
+                    'pl': safe_float(p['pl']),
+                    'pl_pct': safe_float(p['pl_pct'])
                 } for p in pos],
                 'history': BOT_HISTORY
             })
@@ -178,6 +177,7 @@ def api_account():
                 'history': BOT_HISTORY
             })
     except Exception as e:
+        logger.error(f"Error en /api/account: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

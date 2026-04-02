@@ -45,7 +45,9 @@ def obtener_posiciones_abiertas():
             'direccion': 'LONG' if float(p.qty) > 0 else 'SHORT',
             'unidades': abs(float(p.qty)),
             'precio_medio': float(p.avg_entry_price),
+            'precio_actual': float(p.current_price),
             'pl': float(p.unrealized_pl),
+            'pl_pct': float(p.unrealized_plpc) * 100,
         })
     return res
 
