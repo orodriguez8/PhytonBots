@@ -25,7 +25,7 @@ MULTIPLICADOR_ATR_TP = 3.0       # Take Profit = entrada ± (ATR × 3.0)
 # --- Vigilancia (Watchlist) ---
 WATCHLIST = [
     'AAPL', 'TSLA', 'NVDA', 'MSFT', 'AMZN', 'META', # Acciones
-    'BTC/USD', 'ETH/USD', 'LTC/USD'                 # Cripto
+    'BTCUSD', 'ETHUSD', 'LTCUSD', 'AVAXUSD'         # Cripto en Alpaca (sin barra)
 ]
 # Nota: Forex en Alpaca requiere permisos específicos, pero el bot ya lo soporta.
 

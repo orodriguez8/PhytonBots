@@ -13,11 +13,14 @@ import numpy as np
 from dotenv import load_dotenv
 
 # Configuración de logs
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-# Cargar variables de entorno
-load_dotenv()
+# Cargar variables de entorno (Desde el raíz del proyecto)
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env'))
 
 # Añadir el directorio trading_bot al PYTHONPATH
 TOP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -28,6 +31,11 @@ sys.path.insert(0, BOT_DIR)
 if sys.stdout.encoding != 'utf-8':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
+# Estado global
+ALPACA_API_KEY = os.getenv('ALPACA_API_KEY')
+ALPACA_SECRET_KEY = os.getenv('ALPACA_SECRET_KEY')
+ALPACA_ENABLED = bool(ALPACA_API_KEY and ALPACA_SECRET_KEY)
+
 # Importaciones del bot
 try:
     from bot.trading_bot import TradingBot
@@ -35,15 +43,15 @@ try:
         CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS, WATCHLIST
     )
     from data.alpaca_feed import obtener_datos_alpaca
-    # Importamos ejecución si disponible
-    try:
-        from ejecucion.alpaca_orders import obtener_cuenta, obtener_posiciones_abiertas, colocar_orden_mercado
-    except:
-        obtener_cuenta = None
-        obtener_posiciones_abiertas = None
-        colocar_orden_mercado = None
+    from ejecucion.alpaca_orders import obtener_cuenta, obtener_posiciones_abiertas, colocar_orden_mercado
+    
+    logger.info(f"MODO DETECTADO: {'ALPACA REAL/PAPER' if ALPACA_ENABLED else 'SIMULADOR'}")
+    if ALPACA_ENABLED:
+        logger.info(f"API KEY: {ALPACA_API_KEY[:5]}***")
+        logger.info(f"BASE URL: {os.getenv('ALPACA_BASE_URL')}")
+
 except ImportError as e:
-    logger.error(f"Error importando módulos: {e}")
+    logger.error(f"Error importando módulos del bot: {e}")
     WATCHLIST = ['AAPL', 'TSLA'] # Fallback
     CAPITAL_INICIAL = 10000.0
     RIESGO_POR_OPERACION = 0.02
@@ -52,17 +60,13 @@ except ImportError as e:
 app = Flask(__name__)
 CORS(app)
 
-# Estado global
-ALPACA_API_KEY = os.getenv('ALPACA_API_KEY')
-ALPACA_SECRET_KEY = os.getenv('ALPACA_SECRET_KEY')
-ALPACA_ENABLED = bool(ALPACA_API_KEY and ALPACA_SECRET_KEY)
 AUTO_TRADING_ACTIVE = False
 ACTIVE_SYMBOLS = WATCHLIST
 BOT_HISTORY = []
 LAST_RUN_LOG = {} # {symbol: {time, result}}
 
 def safe_float(val, ndigits=2):
-    if val is None or (isinstance(val, (float, np.floating)) and np.isnan(val)): return 0.0
+    if val is None or (isinstance(val, (float, np.floating, np.float64)) and np.isnan(val)): return 0.0
     return round(float(val), ndigits)
 
 def trading_loop():
@@ -86,7 +90,7 @@ def trading_loop():
                     dec = bot.decision
                     dir_ = dec['direccion']
                     
-                    # Registrar log individual
+                    # Registrar log individual para la UI
                     LAST_RUN_LOG[symbol] = {
                         'time': datetime.datetime.now().strftime('%H:%M:%S'),
                         'dir': dir_,
@@ -94,38 +98,49 @@ def trading_loop():
                     }
 
                     # 3. Ejecución automática si es necesario
-                    if dir_ != 'NEUTRAL' and ALPACA_ENABLED and colocar_orden_mercado:
+                    if dir_ != 'NEUTRAL' and ALPACA_ENABLED :
                         posiciones = obtener_posiciones_abiertas()
                         ya_en_posicion = any(p['instrumento'] == symbol for p in posiciones) if posiciones else False
                         
                         if not ya_en_posicion:
                             side = 'buy' if dir_ == 'LONG' else 'sell'
                             ges = dec.get('gestion', {})
-                            # Cantidad mínima o calculada
                             qty = int(ges.get('tamano_posicion', 1))
                             if qty > 0:
-                                res = colocar_orden_mercado(symbol, qty, side, ges.get('take_profit'), ges.get('stop_loss'))
-                                logger.info(f"ORDEN EJECUTADA: {side} {qty} {symbol}")
+                                try:
+                                    res = colocar_orden_mercado(symbol, qty, side, ges.get('take_profit'), ges.get('stop_loss'))
+                                    logger.info(f"ORDEN EJECUTADA EN ALPACA: {side} {qty} {symbol}")
+                                    action = {
+                                        'time': datetime.datetime.now().strftime('%H:%M:%S'),
+                                        'symbol': symbol,
+                                        'type': f"REAL {dir_}",
+                                        'price': safe_float(datos['close'].iloc[-1]),
+                                        'reason': f"Orden enviada a Alpaca: {side} {qty}"
+                                    }
+                                    BOT_HISTORY.insert(0, action)
+                                except Exception as order_error:
+                                    logger.error(f"Error ejecutando orden real: {order_error}")
                     
-                    # Log general
-                    if dir_ != 'NEUTRAL':
+                    # Log general en el historial si hay señal (aunque sea simulada)
+                    elif dir_ != 'NEUTRAL':
                         action = {
                             'time': datetime.datetime.now().strftime('%H:%M:%S'),
                             'symbol': symbol,
-                            'type': dir_,
+                            'type': f"SIM {dir_}",
                             'price': safe_float(datos['close'].iloc[-1]),
                             'reason': dec['razon']
                         }
                         BOT_HISTORY.insert(0, action)
-                        if len(BOT_HISTORY) > 50: BOT_HISTORY.pop()
+                    
+                    if len(BOT_HISTORY) > 50: BOT_HISTORY.pop()
 
                 except Exception as e:
                     logger.error(f"Error loop en {symbol}: {e}")
             
             logger.info("--- Fin del ciclo. Esperando 1 minuto ---")
-            time.sleep(60) # Ejecutar cada minuto
+            time.sleep(60) 
         else:
-            time.sleep(5) # Ciclo de espera inactivo
+            time.sleep(5) 
 
 # Iniciar hilo de trading
 threading.Thread(target=trading_loop, daemon=True).start()
@@ -153,7 +168,7 @@ def api_toggle_auto():
 @app.route('/api/account')
 def api_account():
     try:
-        if ALPACA_ENABLED and obtener_cuenta:
+        if ALPACA_ENABLED:
             cuenta = obtener_cuenta()
             pos = obtener_posiciones_abiertas()
             return jsonify({
@@ -177,7 +192,7 @@ def api_account():
                 'history': BOT_HISTORY
             })
     except Exception as e:
-        logger.error(f"Error en /api/account: {e}")
+        logger.error(f"Error en /api/account: {e}\n{traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
