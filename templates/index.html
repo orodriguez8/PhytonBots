@@ -29,56 +29,25 @@
             <div class="stat-item">
                 <h3>Capital Total</h3>
                 <p id="totalEquity">$0.00</p>
-                <div class="sub up" id="totalPL">+$0.00 (0.0%)</div>
+                <div class="sub" id="totalPL">+$0.00 (0.0%)</div>
             </div>
-            <div class="stat-item">
-                <h3>Último Precio</h3>
-                <p id="lastPrice">$0.00</p>
-                <div class="sub" style="color: var(--text-dim)" id="symbolText">...</div>
+            <div class="stat-item" style="grid-column: span 2;">
+                <h3>Estado Watchlist</h3>
+                <div class="watchlist-container" id="watchlistStatus">
+                    <!-- Status chips for each symbol injected here -->
+                    <span style="color: var(--text-dim); font-size: 0.8125rem;">Esperando inicio...</span>
+                </div>
             </div>
             <div class="stat-item" style="display: flex; align-items: flex-end; justify-content: flex-end;">
-                <button class="btn" id="runBtn" onclick="runAnalysis()">
+                <button class="btn btn-success" id="toggleBtn" onclick="toggleAutomation()">
                     <i data-lucide="play"></i>
-                    Analizar Ahora
+                    Iniciar Automatización
                 </button>
             </div>
         </div>
 
         <div class="grid">
             <div class="main-col">
-                <!-- Decision Panel -->
-                <div class="glass-card">
-                    <div class="decision-title">
-                        <i data-lucide="zap" style="color: var(--primary-light)"></i>
-                        <h2 class="section-title" style="margin-bottom: 0;">Decisión del Bot</h2>
-                        <span id="decisionBadge" class="decision-badge bg-neutral">ESPERANDO</span>
-                    </div>
-                    <p id="decisionReason" style="color: var(--text-dim); font-size: 0.875rem; line-height: 1.5; margin-bottom: 1.5rem;">
-                        Ejecuta un análisis para ver la recomendación del bot basada en indicadores técnicos y confluencias.
-                    </p>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
-                        <div class="confluence-card">
-                            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0.25rem;">
-                                <span>Confluencias LONG</span>
-                                <span id="longCount">0/0</span>
-                            </div>
-                            <div class="progress-container">
-                                <div id="longBar" class="progress-bar progress-long" style="width: 0%"></div>
-                            </div>
-                        </div>
-                        <div class="confluence-card">
-                            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0.25rem;">
-                                <span>Confluencias SHORT</span>
-                                <span id="shortCount">0/0</span>
-                            </div>
-                            <div class="progress-container">
-                                <div id="shortBar" class="progress-bar progress-short" style="width: 0%"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Positions Panel -->
                 <div class="glass-card">
                     <h2 class="section-title">
@@ -114,7 +83,6 @@
                         Actividad Reciente
                     </h2>
                     <ul class="history-list" id="historyList">
-                        <!-- Items injected by JS -->
                         <li style="text-align: center; padding: 2rem 0; color: var(--text-dim); font-size: 0.8125rem;">Sin actividad</li>
                     </ul>
                 </div>

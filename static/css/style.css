@@ -69,8 +69,13 @@ header {
 .dot {
     width: 8px;
     height: 8px;
-    background: var(--success);
+    background: var(--text-dim);
     border-radius: 50%;
+    transition: all 0.3s ease;
+}
+
+.dot.active {
+    background: var(--success);
     box-shadow: 0 0 10px var(--success);
 }
 
@@ -100,7 +105,7 @@ header {
 .info-bar {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
+    gap: 1.5rem;
     margin-bottom: 2rem;
 }
 
@@ -125,24 +130,63 @@ header {
 .up { color: var(--success); }
 .down { color: var(--danger); }
 
-/* Bot Decision Card */
-.decision-title {
+/* Buttons */
+.btn {
+    padding: 0.75rem 1.25rem;
+    border-radius: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
     display: flex;
     align-items: center;
+    gap: 0.5rem;
+    border: none;
+    color: white;
+}
+
+.btn-success {
+    background: var(--success);
+    box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);
+}
+
+.btn-danger {
+    background: var(--danger);
+    box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3);
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.1);
+}
+
+/* Symbol Chips */
+.watchlist-container {
+    display: flex;
+    flex-wrap: wrap;
     gap: 0.75rem;
-    margin-bottom: 1rem;
+    margin-top: 0.5rem;
 }
 
-.decision-badge {
-    padding: 0.25rem 0.75rem;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 0.875rem;
+.symbol-chip {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    font-size: 0.8125rem;
+    display: flex;
+    flex-direction: column;
+    min-width: 80px;
 }
 
-.bg-long { background: rgba(16, 185, 129, 0.2); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.2); }
-.bg-short { background: rgba(239, 68, 68, 0.2); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); }
-.bg-neutral { background: rgba(148, 163, 184, 0.1); color: var(--text-dim); border: 1px solid var(--border); }
+.symbol-chip.long { border-color: var(--success); background: rgba(16, 185, 129, 0.1); }
+.symbol-chip.short { border-color: var(--danger); background: rgba(239, 68, 68, 0.1); }
+
+.small-dir {
+    font-size: 0.625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-top: 2px;
+}
 
 /* Tables & Lists */
 .section-title {
@@ -192,54 +236,4 @@ td {
 .hist-time { font-size: 0.75rem; color: var(--text-dim); }
 .hist-type { font-weight: 600; font-size: 0.8125rem; }
 
-/* Buttons */
-.btn {
-    background: var(--primary);
-    color: white;
-    border: none;
-    padding: 0.75rem 1.5rem;
-    border-radius: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.4);
-}
-
-.btn:hover {
-    background: var(--primary-light);
-    transform: translateY(-1px);
-}
-
-.btn:active {
-    transform: translateY(0);
-}
-
-.btn-loading i {
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
-/* Progress bars for confluences */
-.progress-container {
-    width: 100%;
-    background: rgba(255,255,255,0.05);
-    height: 6px;
-    border-radius: 3px;
-    margin-top: 0.5rem;
-    overflow: hidden;
-}
-
-.progress-bar {
-    height: 100%;
-    transition: width 0.3s ease;
-}
-
-.progress-long { background: var(--success); }
-.progress-short { background: var(--danger); }
+.auto-on { color: var(--success) !important; font-weight: 700; }

@@ -1,3 +1,6 @@
+// State
+let autoTradingActive = false;
+
 // Initialize Lucide icons
 lucide.createIcons();
 
@@ -6,9 +9,21 @@ async function fetchStatus() {
     try {
         const res = await fetch('/api/status');
         const data = await res.json();
+        autoTradingActive = data.auto_trading;
+        
         document.getElementById('modeText').textContent = data.modo;
-        document.getElementById('symbolText').textContent = data.symbol;
-        document.getElementById('autoTradingStatus').textContent = `AUTO: ${data.auto_trading ? 'ON' : 'OFF'}`;
+        updateButtonsUI();
+        
+        // Update watchlist/summary status
+        const summary = document.getElementById('watchlistStatus');
+        if (data.last_run_log) {
+            summary.innerHTML = Object.entries(data.last_run_log).map(([symbol, log]) => `
+                <div class="symbol-chip ${log.dir.toLowerCase()}">
+                    <span>${symbol}</span>
+                    <span class="small-dir">${log.dir}</span>
+                </div>
+            `).join('');
+        }
     } catch (e) { console.error("Error status", e); }
 }
 
@@ -39,38 +54,6 @@ async function fetchAccount() {
         } else {
             table.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-dim); border: none;">No hay posiciones abiertas</td></tr>`;
         }
-    } catch (e) { console.error("Error account", e); }
-}
-
-async function runAnalysis() {
-    const btn = document.getElementById('runBtn');
-    const originalHtml = btn.innerHTML;
-    btn.innerHTML = '<i data-lucide="loader-2"></i> Analizando...';
-    btn.disabled = true;
-    lucide.createIcons();
-
-    try {
-        const res = await fetch('/api/run');
-        const data = await res.json();
-
-        if (data.error) throw new Error(data.error);
-
-        // Update UI
-        document.getElementById('lastPrice').textContent = `$${data.last_price.toLocaleString()}`;
-        
-        const badge = document.getElementById('decisionBadge');
-        badge.textContent = data.direction;
-        badge.className = `decision-badge bg-${data.direction.toLowerCase()}`;
-        
-        document.getElementById('decisionReason').textContent = data.reason;
-
-        // Confluences
-        const c = data.confluences;
-        document.getElementById('longCount').textContent = `${c.total_long}/${c.min}`;
-        document.getElementById('longBar').style.width = `${Math.min(100, (c.total_long / c.min) * 100)}%`;
-        
-        document.getElementById('shortCount').textContent = `${c.total_short}/${c.min}`;
-        document.getElementById('shortBar').style.width = `${Math.min(100, (c.total_short / c.min) * 100)}%`;
 
         // History
         const histList = document.getElementById('historyList');
@@ -79,31 +62,63 @@ async function runAnalysis() {
                 <li class="history-item">
                     <div class="hist-info">
                         <span class="hist-type ${h.type.toLowerCase() === 'long' ? 'up' : h.type.toLowerCase() === 'short' ? 'down' : ''}">
-                            ${h.type === 'NEUTRAL' ? 'ANALISIS' : h.type}
+                            ${h.symbol} ${h.type}
                         </span>
                         <span class="hist-time">${h.time} — $${h.price}</span>
                     </div>
                     <span style="font-size: 0.75rem; color: var(--text-dim); text-align: right; max-width: 150px;">
-                        ${h.reason.split(' ')[0]}...
+                        ${h.reason.split(' ').slice(0,2).join(' ')}...
                     </span>
                 </li>
             `).join('');
+        } else {
+            histList.innerHTML = `<li style="text-align: center; padding: 2rem 0; color: var(--text-dim); font-size: 0.8125rem;">Sin actividad</li>`;
         }
 
-        // Refresh account to see if position changed (if auto-trading was on)
-        fetchAccount();
+    } catch (e) { console.error("Error account", e); }
+}
 
+async function toggleAutomation() {
+    const btn = document.getElementById('toggleBtn');
+    btn.disabled = true;
+    
+    try {
+        const res = await fetch('/api/toggle-auto', { method: 'POST' });
+        const data = await res.json();
+        autoTradingActive = data.auto_trading;
+        updateButtonsUI();
     } catch (e) {
-        alert("Error ejecutando el bot: " + e.message);
+        alert("Error al cambiar estado: " + e.message);
     } finally {
-        btn.innerHTML = originalHtml;
         btn.disabled = false;
-        lucide.createIcons();
     }
+}
+
+function updateButtonsUI() {
+    const btn = document.getElementById('toggleBtn');
+    const statusDot = document.getElementById('statusDot');
+    const autoLabel = document.getElementById('autoTradingStatus');
+
+    if (autoTradingActive) {
+        btn.innerHTML = '<i data-lucide="power"></i> Detener Automatización';
+        btn.className = 'btn btn-danger';
+        statusDot.className = 'dot active';
+        autoLabel.textContent = 'AUTO: ON';
+        autoLabel.className = 'auto-on';
+    } else {
+        btn.innerHTML = '<i data-lucide="play"></i> Iniciar Automatización';
+        btn.className = 'btn btn-success';
+        statusDot.className = 'dot';
+        autoLabel.textContent = 'AUTO: OFF';
+        autoLabel.className = '';
+    }
+    lucide.createIcons();
 }
 
 // Initial Load
 fetchStatus();
 fetchAccount();
-// Refresh account every 30s
-setInterval(fetchAccount, 30000);
+
+// Polling
+setInterval(fetchStatus, 5000); // Check status every 5s
+setInterval(fetchAccount, 10000); // Check account every 10s
