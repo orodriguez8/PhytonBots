@@ -4,7 +4,7 @@ from flask_cors import CORS
 import numpy as np
 from dotenv import load_dotenv
 
-# --- CONFIGURACIÓN DE LOGS ---
+# --- CONFIGURACIÓN DE PANELES ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -35,15 +35,15 @@ try:
     obtener_cuenta, obtener_posiciones_abiertas, colocar_orden_mercado, obtener_datos_alpaca = \
         real_account, real_pos, real_order, real_feed
     
-    logger.info("✅ Módulos internos cargados correctamente.")
+    logger.info("✅ Módulos internos listos.")
 except Exception:
-    logger.error(f"⚠️ Error de carga de módulos:\n{traceback.format_exc()}")
+    logger.error(f"⚠️ Error cargando módulos:\n{traceback.format_exc()}")
     WATCHLIST = ['AAPL', 'TSLA']; CAPITAL_INICIAL = 10000.0; RIESGO_POR_OPERACION = 0.02; MIN_CONFLUENCIAS = 3
 
 app = Flask(__name__)
 CORS(app)
 
-# --- ESTADO GLOBAL ---
+# --- ESTADO ---
 AUTO_TRADING_ACTIVE = False
 BOT_HISTORY = []
 LAST_RUN_LOG = {}
@@ -54,67 +54,64 @@ def safe_float(val, ndigits=2):
         return round(float(val), ndigits)
     except: return 0.0
 
-# --- LOOP TRADING ---
+# --- LOOP TRADING CONGESTIÓN BAJA ---
 def trading_loop():
     global AUTO_TRADING_ACTIVE, BOT_HISTORY
     while True:
         if AUTO_TRADING_ACTIVE:
-            key = os.getenv('ALPACA_API_KEY')
-            sec = os.getenv('ALPACA_SECRET_KEY')
+            key = os.getenv('ALPACA_API_KEY'); sec = os.getenv('ALPACA_SECRET_KEY')
             ALPACA_READY = bool(key and sec)
             
-            # Sincronizamos Equity Real antes de empezar el ciclo
             real_equity = CAPITAL_INICIAL
+            buying_power = real_equity
+            
             if ALPACA_READY:
                 acc = obtener_cuenta()
-                if acc: real_equity = float(acc.get('nav', real_equity))
+                if acc:
+                    real_equity = float(acc.get('nav', real_equity))
+                    buying_power = float(acc.get('margen_libre', real_equity))
 
-            logger.info(f"--- LOOP AUTOMÁTICO (Base Equity: ${real_equity}) ---")
+            logger.info(f"--- 🌀 CICLO: Equity ${real_equity} | BP ${buying_power} ---")
+            
             for symbol in WATCHLIST:
                 try:
-                    if ALPACA_READY:
-                        datos = obtener_datos_alpaca(symbol=symbol)
-                    else:
-                        from trading_bot.data.simulador import generar_datos
-                        datos = generar_datos()
-
+                    datos = obtener_datos_alpaca(symbol=symbol)
                     if datos is None or datos.empty: continue
                     
-                    bot = TradingBot(datos, real_equity, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS)
+                    # Usamos un riesgo más conservador (1% en lugar del 2% default)
+                    bot = TradingBot(datos, real_equity, 0.01, MIN_CONFLUENCIAS)
                     bot.ejecutar()
                     dec = bot.decision; dir_ = dec['direccion']
                     LAST_RUN_LOG[symbol] = {'time': datetime.datetime.now().strftime('%H:%M:%S'), 'dir': dir_, 'reason': dec['razon']}
 
                     if dir_ != 'NEUTRAL' and ALPACA_READY:
                         pos = obtener_posiciones_abiertas()
-                        ya_en_pos = any(p['instrumento'] == symbol for p in pos) if pos else False
-                        
-                        if not ya_en_pos:
+                        if not any(p['instrumento'] == symbol for p in pos):
                             side = 'buy' if dir_ == 'LONG' else 'sell'
                             ges = dec.get('gestion', {})
                             
-                            # CÁLCULO SEGURO DE CANTIDAD
+                            price = float(datos['close'].iloc[-1])
                             raw_qty = float(ges.get('tamano_posicion', 0))
-                            unit_price = float(datos['close'].iloc[-1])
                             
-                            # PROTECCIÓN: Nunca más del 20% del Equity por trade
-                            max_val = real_equity * 0.20
-                            current_val = raw_qty * unit_price
-                            if current_val > max_val:
-                                raw_qty = max_val / unit_price
-                                logger.info(f"🛡️ Ajustando cantidad de {symbol} por límite de Equity (Max 20%)")
+                            # PROTECCIÓN DINÁMICA: No usar más del 10% del Buying Power real por operación
+                            safe_bp_cap = buying_power * 0.10
+                            if (raw_qty * price) > safe_bp_cap:
+                                raw_qty = safe_bp_cap / price
+                                logger.info(f"🛡️ Ajustando {symbol} al 10% del BP disponible.")
 
-                            # Formateo (Crypto admite decimales, Stocks no en Alpaca Standard API)
+                            # Formateo
                             is_crypto = 'USD' in symbol or '/' in symbol
                             qty = round(raw_qty, 4) if is_crypto else max(1, int(raw_qty))
 
                             if qty > 0:
                                 try:
-                                    logger.info(f"🚀 Enviando a Alpaca: {symbol} {qty} {side}")
+                                    logger.info(f"🚀 Orden: {symbol} x{qty} {side.upper()}")
                                     colocar_orden_mercado(symbol, qty, side, ges.get('take_profit'), ges.get('stop_loss'))
-                                    BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M'), 'sym': symbol, 'type': f"REAL {dir_}", 'price': safe_float(unit_price), 'reason': 'Ejecutado'})
+                                    BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M'), 'sym': symbol, 'type': f"REAL {dir_}", 'price': safe_float(price), 'reason': 'Ejecutado'})
+                                    # Actualizamos BP local para la siguiente acción del mismo ciclo
+                                    buying_power -= (qty * price)
                                 except Exception as e_order:
-                                    logger.error(f"❌ Error Alpaca ({symbol}): {e_order}")
+                                    logger.error(f"❌ Fallo en Alpaca ({symbol}): {e_order}")
                     elif dir_ != 'NEUTRAL':
                         BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M'), 'sym': symbol, 'type': f"SIM {dir_}", 'price': safe_float(datos['close'].iloc[-1]), 'reason': dec['razon']})
                     
@@ -125,7 +122,7 @@ def trading_loop():
 
 threading.Thread(target=trading_loop, daemon=True).start()
 
-# --- ROUTES ---
+# RUTA BASE
 @app.route('/')
 def home(): return render_template('index.html')
 
@@ -138,16 +135,14 @@ def toggle():
 @app.route('/api/summary')
 def summary():
     try:
-        key = os.getenv('ALPACA_API_KEY'); sec = os.getenv('ALPACA_SECRET_KEY')
-        is_ready = bool(key and sec)
+        is_ready = bool(os.getenv('ALPACA_API_KEY'))
         data = {'mode': 'ALPACA' if is_ready else 'SIM', 'auto': AUTO_TRADING_ACTIVE, 'summary': LAST_RUN_LOG, 'history': BOT_HISTORY, 'equity': 10000.0, 'pl': 0.0, 'pos': []}
         if is_ready:
             acc = obtener_cuenta()
             if acc:
                 data['equity'] = safe_float(acc.get('nav', 0))
                 data['pl'] = safe_float(acc.get('pl', 0))
-            raw_pos = obtener_posiciones_abiertas()
-            if raw_pos:
+                raw_pos = obtener_posiciones_abiertas()
                 data['pos'] = [{ 's': p['instrumento'], 'q': p['unidades'], 'e': safe_float(p['precio_medio']), 'c': safe_float(p.get('precio_actual', 0)), 'p': safe_float(p['pl']), 'pct': safe_float(p.get('pl_pct', 0)) } for p in raw_pos]
         return jsonify(data)
     except Exception as e: return jsonify({'error': str(e)}), 500

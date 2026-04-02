@@ -11,22 +11,20 @@ def obtener_datos_alpaca(symbol: str = 'AAPL', limit: int = 300):
     secret = os.getenv('ALPACA_SECRET_KEY')
     base   = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
     
-    # Alpaca requiere feeds específicos para crypto o stocks
+    # Alpaca Free Tier (IEX) vs Crypto
     is_crypto = 'USD' in symbol or '/' in symbol
-    feed = 'crypto' if is_crypto else 'iex'
     
     api = tradeapi.REST(key, secret, base, api_version='v2')
     
     try:
-        # Fechas ajustadas para asegurar que haya datos en fin de semana (crypto) o laborables (stocks)
         start_date = (datetime.datetime.now() - datetime.timedelta(days=30)).strftime('%Y-%m-%dT%H:%M:%SZ')
         
-        # Obtención de barras con feed específico
-        bars = api.get_bars(symbol, '1Hour', start=start_date, limit=limit, feed=feed).df
-        
-        if bars.empty:
-            # Reintento sin el parámetro feed por si no está soportado en la cuenta
+        # Para el feed de Crypto en la API gratuita, NO se debe pasar feed='crypto' en get_bars
+        # Se descarga directamente. Para stocks, usamos 'iex' para evitar el error de suscripción
+        if is_crypto:
             bars = api.get_bars(symbol, '1Hour', start=start_date, limit=limit).df
+        else:
+            bars = api.get_bars(symbol, '1Hour', start=start_date, limit=limit, feed='iex').df
             
         if bars.empty:
             logger.warning(f"⚠️ No hay datos para {symbol} en Alpaca.")
