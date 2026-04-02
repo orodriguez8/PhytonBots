@@ -1,133 +1,94 @@
-// State
-let autoTradingActive = false;
+// Unified Dashboard JS
+const state = { auto: false, busy: false };
 
-// Initialize Lucide icons
-lucide.createIcons();
-
-// API Calls
-async function fetchStatus() {
+async function refresh() {
+    if (state.busy) return;
     try {
-        const res = await fetch('/api/status');
-        const data = await res.json();
-        autoTradingActive = data.auto_trading;
-        
-        document.getElementById('modeText').textContent = data.modo;
-        updateButtonsUI();
-        
-        // Update watchlist/summary status
-        const summary = document.getElementById('watchlistStatus');
-        if (data.last_run_log) {
-            summary.innerHTML = Object.entries(data.last_run_log).map(([symbol, log]) => `
-                <div class="symbol-chip ${log.dir.toLowerCase()}">
-                    <span>${symbol}</span>
-                    <span class="small-dir">${log.dir}</span>
-                </div>
-            `).join('');
-        }
-    } catch (e) { console.error("Error status", e); }
-}
-
-async function fetchAccount() {
-    try {
-        const res = await fetch('/api/account');
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error || 'Server error');
-        }
+        const res = await fetch('/api/summary');
+        if (!res.ok) throw new Error();
         const data = await res.json();
         
-        if (data.equity !== undefined) {
-            document.getElementById('totalEquity').textContent = `$${data.equity.toLocaleString()}`;
-        }
-        
-        const plEl = document.getElementById('totalPL');
-        if (data.pl_total !== undefined) {
-            plEl.textContent = `${data.pl_total >= 0 ? '+' : ''}$${data.pl_total.toFixed(2)}`;
-            plEl.className = `sub ${data.pl_total >= 0 ? 'up' : 'down'}`;
-        }
-
-        // Update positions
-        const table = document.getElementById('positionsTable');
-        if (data.posiciones && data.posiciones.length > 0) {
-            table.innerHTML = data.posiciones.map(p => `
-                <tr>
-                    <td style="font-weight: 600;">${p.symbol}</td>
-                    <td>${p.qty}</td>
-                    <td>$${p.entry_price}</td>
-                    <td>$${p.current_price}</td>
-                    <td class="${p.pl >= 0 ? 'up' : 'down'}" style="font-weight: 600;">
-                        ${p.pl >= 0 ? '+' : ''}$${p.pl.toFixed(2)} (${p.pl_pct >= 0 ? '+' : ''}${p.pl_pct}%)
-                    </td>
-                </tr>
-            `).join('');
-        } else {
-            table.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-dim); border: none;">No hay posiciones abiertas</td></tr>`;
-        }
-
-        // History
-        const histList = document.getElementById('historyList');
-        if (data.history && data.history.length > 0) {
-            histList.innerHTML = data.history.map(h => `
-                <li class="history-item">
-                    <div class="hist-info">
-                        <span class="hist-type ${h.type.toLowerCase() === 'long' ? 'up' : h.type.toLowerCase() === 'short' ? 'down' : ''}">
-                            ${h.symbol} ${h.type}
-                        </span>
-                        <span class="hist-time">${h.time} — $${h.price}</span>
-                    </div>
-                    <span style="font-size: 0.75rem; color: var(--text-dim); text-align: right; max-width: 150px;">
-                        ${h.reason.split(' ').slice(0,2).join(' ')}...
-                    </span>
-                </li>
-            `).join('');
-        } else {
-            histList.innerHTML = `<li style="text-align: center; padding: 2rem 0; color: var(--text-dim); font-size: 0.8125rem;">Sin actividad</li>`;
-        }
-
-    } catch (e) { console.error("Error account", e); }
-}
-
-async function toggleAutomation() {
-    const btn = document.getElementById('toggleBtn');
-    btn.disabled = true;
-    
-    try {
-        const res = await fetch('/api/toggle-auto', { method: 'POST' });
-        const data = await res.json();
-        autoTradingActive = data.auto_trading;
-        updateButtonsUI();
+        // Update State
+        state.auto = data.auto;
+        updateUI(data);
     } catch (e) {
-        alert("Error al cambiar estado: " + e.message);
-    } finally {
-        btn.disabled = false;
+        console.warn("Poll failed", e);
     }
 }
 
-function updateButtonsUI() {
+function updateUI(data) {
+    // Mode & Status
+    const statusEl = document.getElementById('statusMode');
+    statusEl.innerHTML = `<span class="status-dot"></span>${data.mode} — ${data.auto ? 'AUTORUN ON' : 'STANDBY'}`;
+    statusEl.parentElement.className = `glass ${data.auto ? 'active' : ''}`;
+    
+    // Toggle Button
     const btn = document.getElementById('toggleBtn');
-    const statusDot = document.getElementById('statusDot');
-    const autoLabel = document.getElementById('autoTradingStatus');
-
-    if (autoTradingActive) {
-        btn.innerHTML = '<i data-lucide="power"></i> Detener Automatización';
-        btn.className = 'btn btn-danger';
-        statusDot.className = 'dot active';
-        autoLabel.textContent = 'AUTO: ON';
-        autoLabel.className = 'auto-on';
+    btn.className = `btn ${data.auto ? 'btn-on' : 'btn-off'}`;
+    btn.innerHTML = data.auto ? '<i data-lucide="power"></i> STOP BOT' : '<i data-lucide="play"></i> START BOT';
+    
+    // Stats
+    document.getElementById('equity').innerText = `$${data.equity.toLocaleString()}`;
+    const plEl = document.getElementById('plTotal');
+    plEl.innerText = `${data.pl >= 0 ? '+' : ''}$${data.pl.toFixed(2)}`;
+    plEl.className = data.pl >= 0 ? 'up' : 'down';
+    
+    // Watchlist
+    const watchEl = document.getElementById('watch');
+    watchEl.innerHTML = Object.entries(data.summary).map(([s, d]) => `
+        <div class="sym-card ${d.dir.toLowerCase()}">
+            <b style="font-size:0.9rem">${s}</b>
+            <span style="font-size:0.6rem;opacity:0.7">${d.time}</span>
+            <span style="font-weight:700; font-size:0.7rem">${d.dir}</span>
+        </div>
+    `).join('');
+    
+    // Positions
+    const posTable = document.getElementById('posTable');
+    if (data.pos.length > 0) {
+        posTable.innerHTML = data.pos.map(p => `
+            <tr>
+                <td style="font-weight:700">${p.s}</td>
+                <td>${p.q}</td>
+                <td>$${p.e}</td>
+                <td>$${p.c}</td>
+                <td class="${p.p >= 0 ? 'up' : 'down'}" style="font-weight:700">
+                    ${p.p >= 0 ? '+' : ''}$${p.p.toFixed(2)} (${p.pct.toFixed(2)}%)
+                </td>
+            </tr>
+        `).join('');
     } else {
-        btn.innerHTML = '<i data-lucide="play"></i> Iniciar Automatización';
-        btn.className = 'btn btn-success';
-        statusDot.className = 'dot';
-        autoLabel.textContent = 'AUTO: OFF';
-        autoLabel.className = '';
+        posTable.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--dim); border:none; padding:2rem 0">No open positions</td></tr>`;
     }
+
+    // History
+    const histEl = document.getElementById('history');
+    histEl.innerHTML = data.history.map(h => `
+        <div class="hist-item">
+            <div style="display:flex; flex-direction:column">
+                <b class="${h.type.includes('LONG') ? 'up' : 'down'}">${h.sym} — ${h.type}</b>
+                <span class="hist-meta">${h.reason}</span>
+            </div>
+            <div style="text-align:right">
+                <b>$${h.price}</b><br/>
+                <span class="hist-meta">${h.time}</span>
+            </div>
+        </div>
+    `).join('');
+
     lucide.createIcons();
 }
 
-// Initial Load
-fetchStatus();
-fetchAccount();
+async function toggle() {
+    try {
+        const res = await fetch('/api/toggle', { method: 'POST' });
+        const d = await res.json();
+        state.auto = d.state;
+        refresh();
+    } catch (e) { alert("Action failed"); }
+}
 
-// Polling
-setInterval(fetchStatus, 5000); // Check status every 5s
-setInterval(fetchAccount, 10000); // Check account every 10s
+// Initial Sync
+refresh();
+setInterval(refresh, 5000); // Efficient 5s polling
+lucide.createIcons();

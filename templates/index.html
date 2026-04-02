@@ -3,94 +3,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trading Bot Hub — Premium Dashboard</title>
-    
-    <!-- External Fonts & Icons -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <title>Mera Victorino</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
-    
-    <!-- Custom Styles -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
     <div class="container">
-        <header>
-            <div class="brand">
-                <h1>ANTIGRAVITY TRADING</h1>
+        <!-- Sidebar: Global Info & Control -->
+        <aside class="sidebar glass">
+            <div class="logo"><h1>ANTIGRAVITY</h1></div>
+            
+            <div id="statusLabel" class="glass active" style="padding:0.75rem; border-radius:12px; font-size:0.8rem; border-color:var(--border)">
+                <span id="statusMode">...</span>
             </div>
-            <div class="status-badge">
-                <span class="dot" id="statusDot"></span>
-                <span id="modeText">...</span>
-                <span id="autoTradingStatus" style="color: var(--text-dim); margin-left: 0.5rem; border-left: 1px solid var(--border); padding-left: 0.5rem; font-size: 0.75rem;">AUTO: OFF</span>
-            </div>
-        </header>
 
-        <div class="info-bar glass-card">
-            <div class="stat-item">
-                <h3>Capital Total</h3>
-                <p id="totalEquity">$0.00</p>
-                <div class="sub" id="totalPL">+$0.00 (0.0%)</div>
+            <div class="stat-card">
+                <span>Total Equity</span>
+                <h2 id="equity">$0.00</h2>
+                <b id="plTotal" class="up">+$0.00</b>
             </div>
-            <div class="stat-item" style="grid-column: span 2;">
-                <h3>Estado Watchlist</h3>
-                <div class="watchlist-container" id="watchlistStatus">
-                    <!-- Status chips for each symbol injected here -->
-                    <span style="color: var(--text-dim); font-size: 0.8125rem;">Esperando inicio...</span>
-                </div>
-            </div>
-            <div class="stat-item" style="display: flex; align-items: flex-end; justify-content: flex-end;">
-                <button class="btn btn-success" id="toggleBtn" onclick="toggleAutomation()">
-                    <i data-lucide="play"></i>
-                    Iniciar Automatización
-                </button>
-            </div>
-        </div>
 
-        <div class="grid">
-            <div class="main-col">
-                <!-- Positions Panel -->
-                <div class="glass-card">
-                    <h2 class="section-title">
-                        <i data-lucide="briefcase" size="18"></i>
-                        Posiciones Abiertas
-                    </h2>
-                    <div style="overflow-x: auto;">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Instrumento</th>
-                                    <th>Cantidad</th>
-                                    <th>Entrada</th>
-                                    <th>Actual</th>
-                                    <th>G/P</th>
-                                </tr>
-                            </thead>
-                            <tbody id="positionsTable">
-                                <tr>
-                                    <td colspan="5" style="text-align: center; color: var(--text-dim); border: none;">No hay posiciones abiertas</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
+            <button id="toggleBtn" class="btn btn-off" onclick="toggle()">
+                <i data-lucide="play"></i> START BOT
+            </button>
+
+            <div class="watchlist-section">
+                <span style="font-size:0.7rem; color:var(--dim); font-weight:700; display:block; margin-bottom:0.5rem">WATCHLIST REAL-TIME</span>
+                <div id="watch" class="watchlist">
+                    <!-- Watchlist items here -->
                 </div>
             </div>
 
-            <div class="side-col">
-                <!-- Activity History -->
-                <div class="glass-card" style="height: calc(100% - 1.5rem);">
-                    <h2 class="section-title">
-                        <i data-lucide="activity" size="18"></i>
-                        Actividad Reciente
-                    </h2>
-                    <ul class="history-list" id="historyList">
-                        <li style="text-align: center; padding: 2rem 0; color: var(--text-dim); font-size: 0.8125rem;">Sin actividad</li>
-                    </ul>
+            <div class="history-section" style="flex:1; overflow:hidden; display:flex; flex-direction:column">
+                <span style="font-size:0.7rem; color:var(--dim); font-weight:700; display:block; margin-bottom:0.5rem">RECURRING ACTIVITY</span>
+                <div id="history" class="hist-list">
+                    <!-- History items here -->
                 </div>
             </div>
-        </div>
+        </aside>
+
+        <!-- Main Content: Positions & Advanced Data -->
+        <main class="main-grid">
+            <div class="glass" style="padding:1.5rem">
+                <h3 style="display:flex; align-items:center; gap:0.5rem; font-size:1rem">
+                    <i data-lucide="briefcase" size="18"></i> OPEN POSITIONS
+                </h3>
+                <div style="overflow-x:auto">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Qty</th>
+                                <th>Entry</th>
+                                <th>Current</th>
+                                <th>P/L Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="posTable">
+                            <tr><td colspan="5" style="text-align:center; padding:2rem 0; color:var(--dim)">Connecting to API...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Optional: Multi-Asset Context or Bot Status Detail -->
+            <div class="glass" style="margin-top:1.5rem; flex:1">
+                 <h3 style="display:flex; align-items:center; gap:0.5rem; font-size:1rem; margin-bottom:1rem">
+                    <i data-lucide="line-chart" size="18"></i> MARKET INSIGHTS
+                </h3>
+                <p style="font-size:0.85rem; color:var(--dim); line-height:1.6">
+                    The algorithm is continuously scanning the 1-hour timeframe across your watchlist using <b>Multi-Confluence Analysis</b>. 
+                    Real-time data is being pulled from the Alpaca IEX/Crypto feed. 
+                    Any discrepancy between simulated signals and real orders will be logged in the recursive activity panel.
+                </p>
+            </div>
+        </main>
     </div>
 
-    <!-- Scripts -->
+    <!-- Optimization: Single Script Load -->
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>
