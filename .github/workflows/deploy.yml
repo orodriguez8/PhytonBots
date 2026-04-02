@@ -19,5 +19,4 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          # Reemplaza 'tu_usuario' y 'nombre_de_tu_space'
-          git push https://raksoda:$HF_TOKEN@huggingface.co/spaces/raksoda/hostingPython main
+          git push --force https://raksoda:$HF_TOKEN@huggingface.co/spaces/raksoda/hostingPython main
