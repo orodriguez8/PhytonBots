@@ -12,19 +12,21 @@ from flask_cors import CORS
 import numpy as np
 from dotenv import load_dotenv
 
-# Configuración de logs
+# Configuración de logs detallada
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - [%(levelname)s] - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
 # Cargar variables de entorno
 load_dotenv()
-load_dotenv(os.path.join(os.path.abspath(os.path.dirname(__file__)), 'trading_bot', '.env'))
 
-# PYTHONPATH setup (Muy importante para Hugging Face)
+# Configuración de Rutas (PYTHONPATH)
 TOP_DIR = os.path.dirname(os.path.abspath(__file__))
+# Añadimos tanto el raíz como trading_bot al path
+if TOP_DIR not in sys.path:
+    sys.path.insert(0, TOP_DIR)
 BOT_DIR = os.path.join(TOP_DIR, 'trading_bot')
 if BOT_DIR not in sys.path:
     sys.path.insert(0, BOT_DIR)
@@ -36,17 +38,19 @@ if sys.stdout.encoding != 'utf-8':
 # Estado global alpaca
 ALPACA_API_KEY = os.getenv('ALPACA_API_KEY')
 ALPACA_SECRET_KEY = os.getenv('ALPACA_SECRET_KEY')
-ALPACA_BASE_URL = os.getenv('ALPACA_BASE_URL')
 ALPACA_ENABLED = bool(ALPACA_API_KEY and ALPACA_SECRET_KEY)
 
-# Definir funciones por defecto para evitar "NameError"
+# Funciones Mockup iniciales (Evitan NameError si falla import)
 def obtener_cuenta(): return None
 def obtener_posiciones_abiertas(): return []
 def colocar_orden_mercado(*args, **kwargs): return None
 def obtener_datos_alpaca(*args, **kwargs): return None
 
-# Importaciones del bot Reales
+# Bloque de importación real con log detallado
 try:
+    logger.info(f"Intentando cargar módulos desde: {BOT_DIR}")
+    
+    # Intentamos importación absoluta desde trading_bot
     from bot.trading_bot import TradingBot
     from config import (
         CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS, WATCHLIST
@@ -56,17 +60,20 @@ try:
                                        obtener_posiciones_abiertas as real_obtener_pos, \
                                        colocar_orden_mercado as real_colocar_orden
     
-    # Reasignar si la importación fue exitosa
+    # Reasignación
     obtener_datos_alpaca = real_obtener_datos
     obtener_cuenta = real_obtener_cuenta
     obtener_posiciones_abiertas = real_obtener_pos
     colocar_orden_mercado = real_colocar_orden
     
-    logger.info("Módulos del bot cargados correctamente.")
+    logger.info("✅ Todos los módulos se cargaron correctamente.")
 
-except Exception as e:
-    logger.error(f"⚠️ Error crítico importando módulos: {e}")
-    WATCHLIST = ['AAPL', 'TSLA'] # Fallback
+except Exception:
+    error_msg = traceback.format_exc()
+    logger.error(f"❌ FALLO CRÍTICO AL CARGAR MÓDULOS:\n{error_msg}")
+    
+    # Valores de emergencia
+    WATCHLIST = ['AAPL', 'TSLA']
     CAPITAL_INICIAL = 10000.0
     RIESGO_POR_OPERACION = 0.02
     MIN_CONFLUENCIAS = 3
@@ -77,7 +84,7 @@ CORS(app)
 AUTO_TRADING_ACTIVE = False
 ACTIVE_SYMBOLS = WATCHLIST
 BOT_HISTORY = []
-LAST_RUN_LOG = {} # {symbol: {time, result}}
+LAST_RUN_LOG = {}
 
 def safe_float(val, ndigits=2):
     try:
@@ -86,11 +93,12 @@ def safe_float(val, ndigits=2):
     except:
         return 0.0
 
+# LOOP DE TRADING
 def trading_loop():
     global AUTO_TRADING_ACTIVE, BOT_HISTORY
     while True:
         if AUTO_TRADING_ACTIVE:
-            logger.info("--- Iniciando ciclo automático de trading ---")
+            logger.info("--- 🔄 Ciclo Automático Iniciado ---")
             for symbol in ACTIVE_SYMBOLS:
                 try:
                     # 1. Obtener datos
@@ -101,10 +109,10 @@ def trading_loop():
                         datos = generar_datos()
 
                     if datos is None or datos.empty:
-                        logger.warning(f"No se obtuvieron datos para {symbol}")
+                        logger.warning(f"⚠️ {symbol}: Sin datos.")
                         continue
 
-                    # 2. Ejecutar Bot
+                    # 2. Análisis
                     bot = TradingBot(datos, CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS)
                     bot.ejecutar()
 
@@ -117,7 +125,7 @@ def trading_loop():
                         'reason': dec['razon']
                     }
 
-                    # 3. Ejecución automática si es necesario
+                    # 3. Orden Real
                     if dir_ != 'NEUTRAL' and ALPACA_ENABLED:
                         try:
                             posiciones = obtener_posiciones_abiertas()
@@ -129,16 +137,16 @@ def trading_loop():
                                 qty = int(ges.get('tamano_posicion', 1))
                                 if qty > 0:
                                     res = colocar_orden_mercado(symbol, qty, side, ges.get('take_profit'), ges.get('stop_loss'))
-                                    logger.info(f"ORDEN REAL ENVIADA: {side} {qty} {symbol}")
+                                    logger.info(f"💰 REAL ORDER: {side} {qty} {symbol}")
                                     BOT_HISTORY.insert(0, {
                                         'time': datetime.datetime.now().strftime('%H:%M:%S'),
                                         'symbol': symbol,
                                         'type': f"REAL {dir_}",
                                         'price': safe_float(datos['close'].iloc[-1]),
-                                        'reason': f"Orden exitosa en Alpaca: {side} {qty}"
+                                        'reason': f"Ejecutado: {side} {qty}"
                                     })
                         except Exception as e_order:
-                            logger.error(f"Falla en ejecución Alpaca para {symbol}: {e_order}")
+                            logger.error(f"❌ Error Alpaca ({symbol}): {e_order}")
                     
                     elif dir_ != 'NEUTRAL':
                         BOT_HISTORY.insert(0, {
@@ -152,19 +160,18 @@ def trading_loop():
                     if len(BOT_HISTORY) > 50: BOT_HISTORY.pop()
 
                 except Exception as e:
-                    logger.error(f"Error loop en {symbol}: {e}")
+                    logger.error(f"❌ Error en {symbol}: {e}")
             
-            logger.info("--- Fin del ciclo. Esperando 1 minuto ---")
+            logger.info("--- ✅ Ciclo Fin. Esperando 1m ---")
             time.sleep(60) 
         else:
             time.sleep(5) 
 
-# Start thread
 threading.Thread(target=trading_loop, daemon=True).start()
 
+# API ROUTES
 @app.route('/')
-def index():
-    return render_template('index.html')
+def index(): return render_template('index.html')
 
 @app.route('/api/status')
 def api_status():
@@ -188,7 +195,7 @@ def api_account():
         if ALPACA_ENABLED:
             cuenta = obtener_cuenta()
             if not cuenta:
-                return jsonify({'error': 'No se pudo conectar con la cuenta de Alpaca'}), 500
+                return jsonify({'error': 'La API de Alpaca no devolvió datos de cuenta (revisa las llaves)'}), 500
                 
             pos = obtener_posiciones_abiertas()
             return jsonify({
@@ -206,13 +213,10 @@ def api_account():
             })
         else:
             return jsonify({
-                'equity': 10000.0,
-                'pl_total': 0.0,
-                'posiciones': [],
-                'history': BOT_HISTORY
+                'equity': 10000.0, 'pl_total': 0.0, 'posiciones': [], 'history': BOT_HISTORY
             })
     except Exception as e:
-        logger.error(f"CRASH en /api/account: {str(e)}")
+        logger.error(f"CRASH api/account: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

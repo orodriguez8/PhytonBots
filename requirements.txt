@@ -5,3 +5,6 @@ numpy
 python-dotenv
 alpaca-trade-api
 v20
+requests
+websocket-client
+urllib3
