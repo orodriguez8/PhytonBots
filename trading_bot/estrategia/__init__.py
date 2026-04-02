@@ -1,0 +1,3 @@
+# Paquete: estrategia
+from estrategia.confluencias import contar_confluencias
+from estrategia.divergencias import detectar_divergencia_alcista, detectar_divergencia_bajista

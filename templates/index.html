@@ -3,20 +3,126 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi Servidor 24/7</title>
-    <style>
-        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f0f2f5; }
-        .card { background: white; padding: 2rem; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
-        h1 { color: #333; }
-        .status { color: #2ecc71; font-weight: bold; }
-    </style>
+    <title>Trading Bot Hub — Premium Dashboard</title>
+    
+    <!-- External Fonts & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <div class="card">
-        <h1>¡Hola desde Hugging Face!</h1>
-        <p>Tu servidor Python está corriendo.</p>
-        <p class="status">● ESTADO: ONLINE (24/7)</p>
-        <small>Listo para subir tu proyecto real.</small>
+    <div class="container">
+        <header>
+            <div class="brand">
+                <h1>ANTIGRAVITY TRADING</h1>
+            </div>
+            <div class="status-badge">
+                <span class="dot" id="statusDot"></span>
+                <span id="modeText">...</span>
+                <span id="autoTradingStatus" style="color: var(--text-dim); margin-left: 0.5rem; border-left: 1px solid var(--border); padding-left: 0.5rem; font-size: 0.75rem;">AUTO: OFF</span>
+            </div>
+        </header>
+
+        <div class="info-bar glass-card">
+            <div class="stat-item">
+                <h3>Capital Total</h3>
+                <p id="totalEquity">$0.00</p>
+                <div class="sub up" id="totalPL">+$0.00 (0.0%)</div>
+            </div>
+            <div class="stat-item">
+                <h3>Último Precio</h3>
+                <p id="lastPrice">$0.00</p>
+                <div class="sub" style="color: var(--text-dim)" id="symbolText">...</div>
+            </div>
+            <div class="stat-item" style="display: flex; align-items: flex-end; justify-content: flex-end;">
+                <button class="btn" id="runBtn" onclick="runAnalysis()">
+                    <i data-lucide="play"></i>
+                    Analizar Ahora
+                </button>
+            </div>
+        </div>
+
+        <div class="grid">
+            <div class="main-col">
+                <!-- Decision Panel -->
+                <div class="glass-card">
+                    <div class="decision-title">
+                        <i data-lucide="zap" style="color: var(--primary-light)"></i>
+                        <h2 class="section-title" style="margin-bottom: 0;">Decisión del Bot</h2>
+                        <span id="decisionBadge" class="decision-badge bg-neutral">ESPERANDO</span>
+                    </div>
+                    <p id="decisionReason" style="color: var(--text-dim); font-size: 0.875rem; line-height: 1.5; margin-bottom: 1.5rem;">
+                        Ejecuta un análisis para ver la recomendación del bot basada en indicadores técnicos y confluencias.
+                    </p>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                        <div class="confluence-card">
+                            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0.25rem;">
+                                <span>Confluencias LONG</span>
+                                <span id="longCount">0/0</span>
+                            </div>
+                            <div class="progress-container">
+                                <div id="longBar" class="progress-bar progress-long" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="confluence-card">
+                            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0.25rem;">
+                                <span>Confluencias SHORT</span>
+                                <span id="shortCount">0/0</span>
+                            </div>
+                            <div class="progress-container">
+                                <div id="shortBar" class="progress-bar progress-short" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Positions Panel -->
+                <div class="glass-card">
+                    <h2 class="section-title">
+                        <i data-lucide="briefcase" size="18"></i>
+                        Posiciones Abiertas
+                    </h2>
+                    <div style="overflow-x: auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Instrumento</th>
+                                    <th>Cantidad</th>
+                                    <th>Entrada</th>
+                                    <th>Actual</th>
+                                    <th>G/P</th>
+                                </tr>
+                            </thead>
+                            <tbody id="positionsTable">
+                                <tr>
+                                    <td colspan="5" style="text-align: center; color: var(--text-dim); border: none;">No hay posiciones abiertas</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="side-col">
+                <!-- Activity History -->
+                <div class="glass-card" style="height: calc(100% - 1.5rem);">
+                    <h2 class="section-title">
+                        <i data-lucide="activity" size="18"></i>
+                        Actividad Reciente
+                    </h2>
+                    <ul class="history-list" id="historyList">
+                        <!-- Items injected by JS -->
+                        <li style="text-align: center; padding: 2rem 0; color: var(--text-dim); font-size: 0.8125rem;">Sin actividad</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
     </div>
+
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

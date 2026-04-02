@@ -1,1 +1,7 @@
 flask
+flask-cors
+pandas
+numpy
+python-dotenv
+alpaca-trade-api
+v20
