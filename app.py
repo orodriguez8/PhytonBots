@@ -20,45 +20,53 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Cargar variables de entorno
-# Primero intentamos la raíz y luego la carpeta trading_bot
 load_dotenv()
 load_dotenv(os.path.join(os.path.abspath(os.path.dirname(__file__)), 'trading_bot', '.env'))
 
-# PYTHONPATH setup
+# PYTHONPATH setup (Muy importante para Hugging Face)
 TOP_DIR = os.path.dirname(os.path.abspath(__file__))
 BOT_DIR = os.path.join(TOP_DIR, 'trading_bot')
-sys.path.insert(0, BOT_DIR)
+if BOT_DIR not in sys.path:
+    sys.path.insert(0, BOT_DIR)
 
 # UTF-8 Encoding
 if sys.stdout.encoding != 'utf-8':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-# Estado global
+# Estado global alpaca
 ALPACA_API_KEY = os.getenv('ALPACA_API_KEY')
 ALPACA_SECRET_KEY = os.getenv('ALPACA_SECRET_KEY')
 ALPACA_BASE_URL = os.getenv('ALPACA_BASE_URL')
 ALPACA_ENABLED = bool(ALPACA_API_KEY and ALPACA_SECRET_KEY)
 
-# Log status on start
-logger.info("=== INICIO DE SERVIDOR ===")
-logger.info(f"ALPACA_ENABLED: {ALPACA_ENABLED}")
-if ALPACA_ENABLED:
-    logger.info(f"API_KEY: {ALPACA_API_KEY[:4]}...{ALPACA_API_KEY[-4:] if len(ALPACA_API_KEY)>4 else ''}")
-    logger.info(f"BASE_URL: {ALPACA_BASE_URL}")
-else:
-    logger.warning("ALERTA: ALPACA_API_KEY o ALPACA_SECRET_KEY no detectados. Usando simulador.")
+# Definir funciones por defecto para evitar "NameError"
+def obtener_cuenta(): return None
+def obtener_posiciones_abiertas(): return []
+def colocar_orden_mercado(*args, **kwargs): return None
+def obtener_datos_alpaca(*args, **kwargs): return None
 
-# Importaciones del bot
+# Importaciones del bot Reales
 try:
     from bot.trading_bot import TradingBot
     from config import (
         CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS, WATCHLIST
     )
-    from data.alpaca_feed import obtener_datos_alpaca
-    from ejecucion.alpaca_orders import obtener_cuenta, obtener_posiciones_abiertas, colocar_orden_mercado
-except ImportError as e:
-    logger.error(f"Error importando módulos del bot: {e}")
-    WATCHLIST = ['AAPL', 'TSLA']
+    from data.alpaca_feed import obtener_datos_alpaca as real_obtener_datos
+    from ejecucion.alpaca_orders import obtener_cuenta as real_obtener_cuenta, \
+                                       obtener_posiciones_abiertas as real_obtener_pos, \
+                                       colocar_orden_mercado as real_colocar_orden
+    
+    # Reasignar si la importación fue exitosa
+    obtener_datos_alpaca = real_obtener_datos
+    obtener_cuenta = real_obtener_cuenta
+    obtener_posiciones_abiertas = real_obtener_pos
+    colocar_orden_mercado = real_colocar_orden
+    
+    logger.info("Módulos del bot cargados correctamente.")
+
+except Exception as e:
+    logger.error(f"⚠️ Error crítico importando módulos: {e}")
+    WATCHLIST = ['AAPL', 'TSLA'] # Fallback
     CAPITAL_INICIAL = 10000.0
     RIESGO_POR_OPERACION = 0.02
     MIN_CONFLUENCIAS = 3
@@ -85,12 +93,18 @@ def trading_loop():
             logger.info("--- Iniciando ciclo automático de trading ---")
             for symbol in ACTIVE_SYMBOLS:
                 try:
+                    # 1. Obtener datos
                     if ALPACA_ENABLED:
                         datos = obtener_datos_alpaca(symbol=symbol)
                     else:
                         from data.simulador import generar_datos
                         datos = generar_datos()
 
+                    if datos is None or datos.empty:
+                        logger.warning(f"No se obtuvieron datos para {symbol}")
+                        continue
+
+                    # 2. Ejecutar Bot
                     bot = TradingBot(datos, CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS)
                     bot.ejecutar()
 
@@ -103,6 +117,7 @@ def trading_loop():
                         'reason': dec['razon']
                     }
 
+                    # 3. Ejecución automática si es necesario
                     if dir_ != 'NEUTRAL' and ALPACA_ENABLED:
                         try:
                             posiciones = obtener_posiciones_abiertas()
@@ -114,7 +129,7 @@ def trading_loop():
                                 qty = int(ges.get('tamano_posicion', 1))
                                 if qty > 0:
                                     res = colocar_orden_mercado(symbol, qty, side, ges.get('take_profit'), ges.get('stop_loss'))
-                                    logger.info(f"ORDEN REAL EJECUTADA: {side} {qty} {symbol}")
+                                    logger.info(f"ORDEN REAL ENVIADA: {side} {qty} {symbol}")
                                     BOT_HISTORY.insert(0, {
                                         'time': datetime.datetime.now().strftime('%H:%M:%S'),
                                         'symbol': symbol,
@@ -123,7 +138,7 @@ def trading_loop():
                                         'reason': f"Orden exitosa en Alpaca: {side} {qty}"
                                     })
                         except Exception as e_order:
-                            logger.error(f"Falla en ejecución Alpaca: {e_order}")
+                            logger.error(f"Falla en ejecución Alpaca para {symbol}: {e_order}")
                     
                     elif dir_ != 'NEUTRAL':
                         BOT_HISTORY.insert(0, {
@@ -144,7 +159,7 @@ def trading_loop():
         else:
             time.sleep(5) 
 
-# Start loop
+# Start thread
 threading.Thread(target=trading_loop, daemon=True).start()
 
 @app.route('/')
@@ -171,8 +186,10 @@ def api_toggle_auto():
 def api_account():
     try:
         if ALPACA_ENABLED:
-            logger.debug("Consultando cuenta Alpaca...")
             cuenta = obtener_cuenta()
+            if not cuenta:
+                return jsonify({'error': 'No se pudo conectar con la cuenta de Alpaca'}), 500
+                
             pos = obtener_posiciones_abiertas()
             return jsonify({
                 'equity': safe_float(cuenta.get('nav', 0)),
@@ -195,7 +212,7 @@ def api_account():
                 'history': BOT_HISTORY
             })
     except Exception as e:
-        logger.error(f"CRASH en /api/account: {str(e)}\n{traceback.format_exc()}")
+        logger.error(f"CRASH en /api/account: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
