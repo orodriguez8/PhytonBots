@@ -1,3 +1,13 @@
+---
+title: Trading Bot Hub Premium
+emoji: 📈
+colorFrom: indigo
+colorTo: blue
+sdk: docker
+app_file: app.py
+pinned: false
+---
+
 # 🤖 Trading Bot Hub (Hugging Face Edition)
 
 Este repositorio está optimizado para funcionar en **Hugging Face Spaces** usando Docker.
@@ -13,3 +23,5 @@ Este repositorio está optimizado para funcionar en **Hugging Face Spaces** usan
    - `ALPACA_PAPER`: `True` para trading simulado.
 
 La aplicación arrancará automáticamente en el puerto 7860 y mostrará el panel premium interactivo.
+
+Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
