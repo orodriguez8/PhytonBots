@@ -64,60 +64,82 @@ def trading_loop():
             
             real_equity = CAPITAL_INICIAL
             buying_power = real_equity
+            positions_list = []
             
             if ALPACA_READY:
                 acc = obtener_cuenta()
                 if acc:
                     real_equity = float(acc.get('nav', real_equity))
                     buying_power = float(acc.get('margen_libre', real_equity))
+                
+                positions_list = obtener_posiciones_abiertas()
 
-            logger.info(f"--- 🌀 CICLO: Equity ${real_equity} | BP ${buying_power} ---")
+            logger.info(f"--- 🌀 CICLO: Equity ${real_equity} | BP ${buying_power} | Posiciones: {len(positions_list)} ---")
             
             for symbol in WATCHLIST:
                 try:
                     datos = obtener_datos_alpaca(symbol=symbol)
-                    if datos is None or datos.empty: continue
+                    if datos is None or datos.empty:
+                        logger.warning(f"⚠️ {symbol}: Sin datos, saltando.")
+                        continue
                     
-                    # Usamos un riesgo más conservador (1% en lugar del 2% default)
+                    # Decisión del bot
                     bot = TradingBot(datos, real_equity, 0.01, MIN_CONFLUENCIAS)
                     bot.ejecutar()
                     dec = bot.decision; dir_ = dec['direccion']
+                    
+                    # Actualizar log para dashboard
                     LAST_RUN_LOG[symbol] = {'time': datetime.datetime.now().strftime('%H:%M:%S'), 'dir': dir_, 'reason': dec['razon']}
 
-                    if dir_ != 'NEUTRAL' and ALPACA_READY:
-                        pos = obtener_posiciones_abiertas()
-                        if not any(p['instrumento'] == symbol for p in pos):
+                    # Sincronización de posiciones: normalizamos (AVAXUSD vs AVAX/USD)
+                    norm_sym = symbol.replace('/', '').upper()
+                    current_pos = next((p for p in positions_list if p['instrumento'].replace('/', '').upper() == norm_sym), None)
+
+                    if ALPACA_READY:
+                        if current_pos:
+                            # YA TENEMOS POSICIÓN: ¿Debemos cerrar?
+                            is_long = current_pos['direccion'] == 'LONG'
+                            should_close = (dir_ == 'NEUTRAL') or (is_long and dir_ == 'SHORT') or (not is_long and dir_ == 'LONG')
+                            
+                            if should_close:
+                                logger.info(f"🛑 CERRANDO {symbol} (Señal: {dir_})")
+                                side_close = 'sell' if is_long else 'buy'
+                                colocar_orden_mercado(symbol, current_pos['unidades'], side_close)
+                                BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M'), 'sym': symbol, 'type': f"CLOSE {current_pos['direccion']}", 'price': safe_float(datos['close'].iloc[-1]), 'reason': f"Señal {dir_}"})
+                        
+                        elif dir_ != 'NEUTRAL':
+                            # NO HAY POSICIÓN: ¿Debemos abrir?
                             side = 'buy' if dir_ == 'LONG' else 'sell'
                             ges = dec.get('gestion', {})
-                            
                             price = float(datos['close'].iloc[-1])
                             raw_qty = float(ges.get('tamano_posicion', 0))
                             
-                            # PROTECCIÓN DINÁMICA: No usar más del 10% del Buying Power real por operación
                             safe_bp_cap = buying_power * 0.10
                             if (raw_qty * price) > safe_bp_cap:
                                 raw_qty = safe_bp_cap / price
-                                logger.info(f"🛡️ Ajustando {symbol} al 10% del BP disponible.")
+                                logger.info(f"🛡️ Ajustando {symbol} al 10% del BP.")
 
-                            # Formateo
                             is_crypto = 'USD' in symbol or '/' in symbol
                             qty = round(raw_qty, 4) if is_crypto else max(1, int(raw_qty))
 
                             if qty > 0:
                                 try:
-                                    logger.info(f"🚀 Orden: {symbol} x{qty} {side.upper()}")
+                                    logger.info(f"🚀 ABRIENDO: {symbol} x{qty} {side.upper()}")
                                     colocar_orden_mercado(symbol, qty, side, ges.get('take_profit'), ges.get('stop_loss'))
-                                    BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M'), 'sym': symbol, 'type': f"REAL {dir_}", 'price': safe_float(price), 'reason': 'Ejecutado'})
-                                    # Actualizamos BP local para la siguiente acción del mismo ciclo
+                                    BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M'), 'sym': symbol, 'type': f"OPEN {dir_}", 'price': safe_float(price), 'reason': 'Ejecutado'})
                                     buying_power -= (qty * price)
                                 except Exception as e_order:
-                                    logger.error(f"❌ Fallo en Alpaca ({symbol}): {e_order}")
+                                    logger.error(f"❌ Error Alpaca {symbol}: {e_order}")
+
                     elif dir_ != 'NEUTRAL':
+                        # Modo simulación
                         BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M'), 'sym': symbol, 'type': f"SIM {dir_}", 'price': safe_float(datos['close'].iloc[-1]), 'reason': dec['razon']})
                     
                     if len(BOT_HISTORY) > 20: BOT_HISTORY.pop()
-                except Exception as e: logger.error(f"Error {symbol}: {e}")
+                except Exception as e:
+                    logger.error(f"Error {symbol} en el loop: {e}")
             time.sleep(60)
+
         else: time.sleep(10)
 
 threading.Thread(target=trading_loop, daemon=True).start()
