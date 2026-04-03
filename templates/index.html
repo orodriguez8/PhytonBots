@@ -79,8 +79,10 @@
                     </h3>
                     <div style="display:flex; gap:0.5rem; align-items:center;">
                         <input type="text" id="orderSearch" onkeyup="filterOrders()" placeholder="Search symbol..." style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:6px; padding:4px 8px; font-size:0.75rem">
+                        <button onclick="cancelAllOrders()" style="background:rgba(255, 68, 68, 0.1); border:1px solid rgba(255, 68, 68, 0.2); color:#ff4444; border-radius:6px; padding:4px 8px; font-size:0.65rem; cursor:pointer; font-weight:700">CANCEL ALL</button>
                         <button onclick="toggleOrders()" style="background:none; border:none; color:var(--dim); cursor:pointer;"><i data-lucide="chevron-down" id="orderChevron"></i></button>
                     </div>
+
                 </div>
                 <div id="ordersContainer">
                     <div id="pendingOrders" class="orders-list"></div>

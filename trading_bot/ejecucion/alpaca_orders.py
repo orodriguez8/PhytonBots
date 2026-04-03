@@ -79,6 +79,18 @@ def obtener_ordenes_activas():
         print(f"Error en obtener_ordenes: {e}")
         return []
 
+def cancelar_todas_las_ordenes():
+    """
+    Cancela todas las órdenes pendientes en la cuenta.
+    """
+    try:
+        api = _get_api()
+        api.cancel_all_orders()
+        return True
+    except Exception as e:
+        print(f"Error cancelando órdenes: {e}")
+        return False
+
 def colocar_orden_mercado(symbol, qty, side, take_profit=None, stop_loss=None):
     """
     Ejecuta una orden de mercado en Alpaca. 

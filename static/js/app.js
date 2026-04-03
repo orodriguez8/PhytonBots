@@ -137,7 +137,23 @@ function toggleOrders() {
     const container = document.getElementById('ordersContainer');
     const chevron = document.getElementById('orderChevron');
     container.style.display = ordersCollapsed ? 'none' : 'block';
-    chevron.style.transform = ordersCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+    if (chevron) chevron.style.transform = ordersCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+}
+
+async function cancelAllOrders() {
+    if (!confirm("¿Deseas cancelar todas las órdenes pendientes?")) return;
+    try {
+        const res = await fetch('/api/cancel_all', { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+            alert("Todas las órdenes han sido canceladas.");
+            refresh();
+        } else {
+            alert("Error: " + data.error);
+        }
+    } catch (e) {
+        alert("Error de conexión");
+    }
 }
 
 async function toggle() {

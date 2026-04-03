@@ -30,12 +30,14 @@ try:
         obtener_cuenta as real_account,
         obtener_posiciones_abiertas as real_pos,
         obtener_ordenes_activas as real_orders,
+        cancelar_todas_las_ordenes as real_cancel,
         colocar_orden_mercado as real_order
     )
     from trading_bot.data.alpaca_feed import obtener_datos_alpaca as real_feed
     
-    obtener_cuenta, obtener_posiciones_abiertas, obtener_ordenes_activas, colocar_orden_mercado, obtener_datos_alpaca = \
-        real_account, real_pos, real_orders, real_order, real_feed
+    obtener_cuenta, obtener_posiciones_abiertas, obtener_ordenes_activas, cancelar_todas_las_ordenes, colocar_orden_mercado, obtener_datos_alpaca = \
+        real_account, real_pos, real_orders, real_cancel, real_order, real_feed
+
 
     
     logger.info("✅ Módulos internos listos.")
@@ -76,6 +78,7 @@ def trading_loop():
                     buying_power = float(acc.get('margen_libre', real_equity))
                 
                 positions_list = obtener_posiciones_abiertas()
+                active_orders = obtener_ordenes_activas()
 
             logger.info(f"--- 🌀 CICLO: Equity ${real_equity} | BP ${buying_power} | Posiciones: {len(positions_list)} ---")
             
@@ -94,9 +97,10 @@ def trading_loop():
                     # Actualizar log para dashboard
                     LAST_RUN_LOG[symbol] = {'time': datetime.datetime.now().strftime('%H:%M:%S'), 'dir': dir_, 'reason': dec['razon']}
 
-                    # Sincronización de posiciones: normalizamos (AVAXUSD vs AVAX/USD)
+                    # Sincronización: normalizamos (AVAXUSD vs AVAX/USD)
                     norm_sym = symbol.replace('/', '').upper()
                     current_pos = next((p for p in positions_list if p['instrumento'].replace('/', '').upper() == norm_sym), None)
+                    pending_order = next((o for o in active_orders if o['symbol'].replace('/', '').upper() == norm_sym), None)
 
                     if ALPACA_READY:
                         if current_pos:
@@ -110,8 +114,13 @@ def trading_loop():
                                 colocar_orden_mercado(symbol, current_pos['unidades'], side_close)
                                 BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M'), 'sym': symbol, 'type': f"CLOSE {current_pos['direccion']}", 'price': safe_float(datos['close'].iloc[-1]), 'reason': f"Señal {dir_}"})
                         
+                        elif pending_order:
+                            # YA HAY UNA ORDEN PENDIENTE: No hacemos nada para evitar duplicidad
+                            logger.info(f"⏳ {symbol}: Ya hay una orden pendiente ({pending_order['side']}), esperando...")
+
                         elif dir_ != 'NEUTRAL':
-                            # NO HAY POSICIÓN: ¿Debemos abrir?
+                            # NO HAY POSICIÓN NI ORDEN: ¿Debemos abrir?
+
                             side = 'buy' if dir_ == 'LONG' else 'sell'
                             ges = dec.get('gestion', {})
                             price = float(datos['close'].iloc[-1])
@@ -184,6 +193,15 @@ def summary():
 
         return jsonify(data)
     except Exception as e: return jsonify({'error': str(e)}), 500
+
+@app.route('/api/cancel_all', methods=['POST'])
+def cancel_all():
+    global BOT_HISTORY
+    ok = cancelar_todas_las_ordenes()
+    if ok:
+        BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M'), 'sym': 'ALL', 'type': 'CANCEL', 'price': 0, 'reason': 'Manual cancel'})
+        return jsonify({'ok': True})
+    return jsonify({'ok': False, 'error': 'Error Alpaca'})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=7860)
