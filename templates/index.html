@@ -1,60 +1,96 @@
-<!-- VERSION: 2.0.0 - RECIÉN EDITADO POR ANTIGRAVITY -->
+<!-- VERSION: 2.0.2 - REPARADO POR ANTIGRAVITY -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Mera Victorino - v2.0</title>
+    <title>Mera Victorino - Trading Bot</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
     <div class="container">
+        <!-- Sidebar: Global Info & Control -->
         <aside class="sidebar glass">
             <div class="logo"><h1>Mera Victorino</h1></div>
             
+            <div id="statusLabel" class="glass active" style="padding:0.75rem; border-radius:12px; font-size:0.8rem; border:1px solid rgba(255,255,255,0.1); margin-bottom:1rem">
+                <span id="statusMode">Connecting...</span>
+            </div>
+
             <div class="stat-card">
                 <span>Account Equity</span>
                 <h2 id="equity">$0.00</h2>
-                <div style="display:flex; justify-content:space-between;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
                     <b id="plTotal" class="up">+$0.00</b>
-                    <span style="font-size:0.7rem; color:var(--dim)">BP: <span id="bp" style="color:var(--text)">$0.00</span></span>
+                    <span style="font-size:0.65rem; color:var(--dim); font-weight:700;">BP: <span id="bp" style="color:#fff">$0.00</span></span>
                 </div>
             </div>
 
-            <button id="toggleBtn" class="btn btn-off" onclick="toggle()">
+            <button id="toggleBtn" class="btn btn-off" onclick="toggle()" style="margin-top:1rem">
                 <i data-lucide="play"></i> START BOT
             </button>
 
-            <div class="watchlist-section">
-                <span class="label">WATCHLIST</span>
+            <div class="watchlist-section" style="margin-top:1.5rem">
+                <span style="font-size:0.7rem; color:var(--dim); font-weight:700; display:block; margin-bottom:0.5rem">WATCHLIST</span>
                 <div id="watch" class="watchlist"></div>
             </div>
 
-            <div class="history-section">
-                <span class="label">HISTORY</span>
+            <div class="history-section" style="flex:1; overflow:hidden; display:flex; flex-direction:column; margin-top:1.5rem">
+                <span style="font-size:0.7rem; color:var(--dim); font-weight:700; display:block; margin-bottom:0.5rem">RECURRING ACTIVITY</span>
                 <div id="history" class="hist-list"></div>
             </div>
         </aside>
 
+        <!-- Main Content -->
         <main class="main-grid">
             <div class="glass" style="padding:1.5rem">
-                <h3><i data-lucide="briefcase"></i> POSITIONS</h3>
+                <h3 style="display:flex; align-items:center; gap:0.5rem; font-size:1rem; margin-bottom:1rem">
+                    <i data-lucide="briefcase" size="18"></i> OPEN POSITIONS
+                </h3>
                 <div class="table-wrapper">
                     <table>
-                        <thead><tr><th>Sym</th><th>Qty</th><th>Entry</th><th>Current</th><th>P/L</th></tr></thead>
-                        <tbody id="posTable"></tbody>
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Qty</th>
+                                <th>Entry</th>
+                                <th>Current</th>
+                                <th>P/L Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="posTable">
+                            <tr><td colspan="5" style="text-align:center; padding:2rem 0; color:var(--dim)">Loading...</td></tr>
+                        </tbody>
                     </table>
                 </div>
+
+                <!-- Desktop table exists, mobile cards needed for app.js sync -->
+                <div id="posCards" class="pos-cards-mobile" style="display:none"></div>
             </div>
 
-            <div class="glass" style="margin-top:1rem; padding:1.5rem">
-                <h3><i data-lucide="clock"></i> PENDING ORDERS</h3>
+            <!-- PENDING ORDERS -->
+            <div class="glass" style="margin-top:1.5rem; padding:1.5rem">
+                <h3 style="display:flex; align-items:center; gap:0.5rem; font-size:1rem; margin-bottom:1rem">
+                    <i data-lucide="clock" size="18"></i> PENDING ORDERS
+                </h3>
                 <div id="pendingOrders" class="orders-list"></div>
+            </div>
+
+            <!-- MARKET INSIGHTS -->
+            <div class="glass" style="margin-top:1.5rem; padding:1.5rem">
+                 <h3 style="display:flex; align-items:center; gap:0.5rem; font-size:1rem; margin-bottom:1rem">
+                    <i data-lucide="line-chart" size="18"></i> MARKET INSIGHTS
+                </h3>
+                <p id="summary" style="font-size:0.85rem; color:var(--dim); line-height:1.6">
+                    Scanning the watchlist using <b>Multi-Confluence Analysis</b>. 
+                    Real-time data from Alpaca/Crypto feed.
+                </p>
             </div>
         </main>
     </div>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script>lucide.createIcons();</script>
 </body>
 </html>
