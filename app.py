@@ -142,6 +142,11 @@ def trading_loop():
                                     buying_power -= (qty * price)
                                 except Exception as e_order:
                                     logger.error(f"❌ Error Alpaca {symbol}: {e_order}")
+                            else:
+                                # Caso de insuficiente BP para acciones completas
+                                logger.warning(f"⚠️ {symbol}: Cantidad calculada 0 (BP Sugerido: ${safe_float(safe_bp_cap)} < Precio: ${price})")
+                                BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M'), 'sym': symbol, 'type': 'SKIP', 'price': price, 'reason': f'Insuficiente BP (${safe_float(safe_bp_cap)})'})
+
 
                     elif dir_ != 'NEUTRAL':
                         # Modo simulación
