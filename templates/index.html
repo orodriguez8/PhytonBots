@@ -1,106 +1,60 @@
+<!-- VERSION: 2.0.0 - RECIÉN EDITADO POR ANTIGRAVITY -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mera Victorino</title>
+    <title>Dashboard Mera Victorino - v2.0</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
     <div class="container">
-        <!-- Sidebar: Global Info & Control -->
         <aside class="sidebar glass">
-            <div class="logo"><h1>Mera Victorino Sucio Lambón</h1></div>
+            <div class="logo"><h1>Mera Victorino</h1></div>
             
-            <div id="statusLabel" class="glass active" style="padding:0.75rem; border-radius:12px; font-size:0.8rem; border-color:var(--border)">
-                <span id="statusMode">...</span>
-            </div>
-
             <div class="stat-card">
-                <span>Total Equity</span>
+                <span>Account Equity</span>
                 <h2 id="equity">$0.00</h2>
-                <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="display:flex; justify-content:space-between;">
                     <b id="plTotal" class="up">+$0.00</b>
-                    <span id="bpLabel" style="font-size:0.65rem; color:var(--dim); font-weight:700;">BP: <span id="bp" style="color:var(--text)">$0.00</span></span>
+                    <span style="font-size:0.7rem; color:var(--dim)">BP: <span id="bp" style="color:var(--text)">$0.00</span></span>
                 </div>
             </div>
-
 
             <button id="toggleBtn" class="btn btn-off" onclick="toggle()">
                 <i data-lucide="play"></i> START BOT
             </button>
 
             <div class="watchlist-section">
-                <span style="font-size:0.7rem; color:var(--dim); font-weight:700; display:block; margin-bottom:0.5rem">WATCHLIST REAL-TIME</span>
-                <div id="watch" class="watchlist">
-                    <!-- Watchlist items here -->
-                </div>
+                <span class="label">WATCHLIST</span>
+                <div id="watch" class="watchlist"></div>
             </div>
 
-            <div class="history-section" style="flex:1; overflow:hidden; display:flex; flex-direction:column">
-                <span style="font-size:0.7rem; color:var(--dim); font-weight:700; display:block; margin-bottom:0.5rem">RECURRING ACTIVITY</span>
-                <div id="history" class="hist-list">
-                    <!-- History items here -->
-                </div>
+            <div class="history-section">
+                <span class="label">HISTORY</span>
+                <div id="history" class="hist-list"></div>
             </div>
         </aside>
 
-        <!-- Main Content: Positions & Advanced Data -->
         <main class="main-grid">
             <div class="glass" style="padding:1.5rem">
-                <h3 style="display:flex; align-items:center; gap:0.5rem; font-size:1rem">
-                    <i data-lucide="briefcase" size="18"></i> OPEN POSITIONS
-                </h3>
+                <h3><i data-lucide="briefcase"></i> POSITIONS</h3>
                 <div class="table-wrapper">
                     <table>
-                        <thead>
-                            <tr>
-                                <th>Symbol</th>
-                                <th>Qty</th>
-                                <th>Entry</th>
-                                <th>Current</th>
-                                <th>P/L Total</th>
-                            </tr>
-                        </thead>
-                        <tbody id="posTable">
-                            <tr><td colspan="5" style="text-align:center; padding:2rem 0; color:var(--dim)">Connecting to API...</td></tr>
-                        </tbody>
+                        <thead><tr><th>Sym</th><th>Qty</th><th>Entry</th><th>Current</th><th>P/L</th></tr></thead>
+                        <tbody id="posTable"></tbody>
                     </table>
-                </div>
-
-                <!-- NEW: Mobile Cards View -->
-                <div id="posCards" class="pos-cards-mobile">
-                    <!-- Cards will be injected by JS -->
                 </div>
             </div>
 
-                <!-- NEW: Pending Orders -->
-                <div class="pending-orders glass" style="margin-top:1.5rem; padding:1.5rem">
-                    <h3 style="display:flex; align-items:center; gap:0.5rem; font-size:1rem; margin-bottom:1rem">
-                        <i data-lucide="clock" size="18"></i> PENDING ORDERS
-                    </h3>
-                    <div id="pendingOrders" class="orders-list">
-                        <!-- Pending orders go here -->
-                    </div>
-                </div>
-
-                <div class="glass" style="margin-top:1.5rem; flex:1">
-
-                 <h3 style="display:flex; align-items:center; gap:0.5rem; font-size:1rem; margin-bottom:1rem">
-                    <i data-lucide="line-chart" size="18"></i> MARKET INSIGHTS
-                </h3>
-                <p style="font-size:0.85rem; color:var(--dim); line-height:1.6">
-                    The algorithm is continuously scanning the 1-hour timeframe across your watchlist using <b>Multi-Confluence Analysis</b>. 
-                    Real-time data is being pulled from the Alpaca IEX/Crypto feed. 
-                    Any discrepancy between simulated signals and real orders will be logged in the recursive activity panel.
-                </p>
+            <div class="glass" style="margin-top:1rem; padding:1.5rem">
+                <h3><i data-lucide="clock"></i> PENDING ORDERS</h3>
+                <div id="pendingOrders" class="orders-list"></div>
             </div>
         </main>
     </div>
-
-    <!-- Optimization: Single Script Load -->
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>
