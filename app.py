@@ -29,14 +29,16 @@ try:
     from trading_bot.ejecucion.alpaca_orders import (
         obtener_cuenta as real_account,
         obtener_posiciones_abiertas as real_pos,
+        obtener_posiciones_cerradas as real_history,
         obtener_ordenes_activas as real_orders,
         cancelar_todas_las_ordenes as real_cancel,
         colocar_orden_mercado as real_order
     )
     from trading_bot.data.alpaca_feed import obtener_datos_alpaca as real_feed
     
-    obtener_cuenta, obtener_posiciones_abiertas, obtener_ordenes_activas, cancelar_todas_las_ordenes, colocar_orden_mercado, obtener_datos_alpaca = \
-        real_account, real_pos, real_orders, real_cancel, real_order, real_feed
+    obtener_cuenta, obtener_posiciones_abiertas, obtener_posiciones_cerradas, obtener_ordenes_activas, cancelar_todas_las_ordenes, colocar_orden_mercado, obtener_datos_alpaca = \
+        real_account, real_pos, real_history, real_orders, real_cancel, real_order, real_feed
+
 
 
     
@@ -201,8 +203,12 @@ def summary():
                 
                 # DAY P/L: Beneficio del día (desde el cierre de ayer)
                 data['day_pl'] = safe_float(acc.get('pl', 0))
+                
+                # Historial de trades cerrados
+                data['closed'] = obtener_posiciones_cerradas()
 
         return jsonify(data)
+
 
     except Exception as e: return jsonify({'error': str(e)}), 500
 

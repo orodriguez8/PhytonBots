@@ -59,6 +59,30 @@ def obtener_posiciones_abiertas():
         print(f"Error en obtener_posiciones: {e}")
         return []
 
+def obtener_posiciones_cerradas():
+    """
+    Obtiene el historial de posiciones cerradas recientemente.
+    """
+    try:
+        api = _get_api()
+        # Buscamos 'FILL' (ejecuciones)
+        activities = api.get_activities(activity_types='FILL')
+        
+        cerradas = []
+        # Agrupamos por símbolo para simplificar el historial
+        for act in activities:
+            cerradas.append({
+                's': act.symbol,
+                'q': float(act.qty),
+                'p': float(act.price),
+                'side': act.side.upper(),
+                'time': act.transaction_time.strftime('%Y-%m-%d %H:%M')
+            })
+        return cerradas[:10] # Solo las últimas 10
+    except Exception as e:
+        print(f"Error en historial: {e}")
+        return []
+
 def obtener_ordenes_activas():
     """
     Devuelve lista de órdenes pendientes (no ejecutadas).

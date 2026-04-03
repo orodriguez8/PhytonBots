@@ -71,6 +71,29 @@
                 <div id="posCards" class="pos-cards-mobile" style="display:none"></div>
             </div>
 
+            <!-- CLOSED POSITIONS -->
+            <div class="glass" style="margin-top:1.5rem; padding:1.5rem">
+                <h3 style="display:flex; align-items:center; gap:0.5rem; font-size:1rem; margin-bottom:1rem">
+                    <i data-lucide="check-circle" size="18"></i> CLOSED POSITIONS
+                </h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Side</th>
+                                <th>Qty</th>
+                                <th>Price</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="closedTable">
+                            <tr><td colspan="5" style="text-align:center; padding:1rem 0; color:var(--dim)">No closed positions yet</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
             <!-- PENDING ORDERS (Collapsible + Searchable) -->
             <div class="glass" style="margin-top:1.5rem; padding:1.5rem">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem">

@@ -103,8 +103,23 @@ function updateUI(data) {
         </div>
     `).join('');
 
-    // 7. Orders
+    // 7. Closed Positions
+    const closedTable = document.getElementById('closedTable');
+    if (data.closed && data.closed.length > 0) {
+        closedTable.innerHTML = data.closed.map(c => `
+            <tr>
+                <td><b>${c.s}</b></td>
+                <td><span class="badge ${c.side == 'BUY' ? 'up' : 'down'}">${c.side}</span></td>
+                <td>${c.q}</td>
+                <td>$${c.p}</td>
+                <td style="font-size:0.7rem; opacity:0.6">${c.time}</td>
+            </tr>
+        `).join('');
+    }
+
+    // 8. Orders
     updateOrders(data);
+
     
     lucide.createIcons();
 }
