@@ -17,6 +17,11 @@ load_dotenv()
 CAPITAL_INICIAL = 10_000.0       # Capital inicial en USD
 RIESGO_POR_OPERACION = 0.02      # Máximo 2% del capital por operación
 
+# --- Modo de Trading ---
+# 'ALPACA' para Acciones, 'BINANCE' para Cripto (via CCXT)
+TRADING_MODE_CRYPTO = 'BINANCE' 
+USE_TESTNET = True               # Cambiar a False para cuenta real
+
 # --- Multiplicadores ATR para Stop Loss y Take Profit ---
 MULTIPLICADOR_ATR_SL = 1.5       # Stop Loss  = entrada ± (ATR × 1.5)
 MULTIPLICADOR_ATR_TP = 3.0       # Take Profit = entrada ± (ATR × 3.0)
@@ -24,8 +29,8 @@ MULTIPLICADOR_ATR_TP = 3.0       # Take Profit = entrada ± (ATR × 3.0)
 
 # --- Vigilancia (Watchlist) ---
 WATCHLIST = [
-    'AAPL', 'TSLA', 'NVDA', 'MSFT', 'AMZN', 'META', # Acciones
-    'BTCUSD', 'ETHUSD', 'LTCUSD', 'AVAXUSD'         # Cripto en Alpaca (sin barra)
+    'AAPL', 'TSLA', 'NVDA', 'MSFT', 'AMZN', 'META', # Acciones (Alpaca)
+    'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'AVAX/USDT' # Cripto (Binance)
 ]
 # Nota: Forex en Alpaca requiere permisos específicos, pero el bot ya lo soporta.
 
@@ -58,8 +63,13 @@ TENDENCIA           = 0.0004     # Tendencia por vela (positivo = alcista)
 VOLATILIDAD         = 0.013      # Volatilidad por vela
 SEMILLA_ALEATORIA   = 99         # Semilla para reproducibilidad
 
-# --- Conexión Oanda ---
+# --- Conexión Oanda (Legacy) ---
 # Estos valores actúan como fallback si no se definen en el archivo .env o en HF Secrets
 OANDA_INSTRUMENT    = os.getenv('OANDA_INSTRUMENT', 'EUR_USD')  # Par a operar
 OANDA_GRANULARITY   = os.getenv('OANDA_GRANULARITY', 'H1')       # Temporalidad
 OANDA_ENVIRONMENT   = os.getenv('OANDA_ENVIRONMENT', 'practice') # 'practice' o 'live'
+
+# --- Conexión Binance (CCXT) ---
+BINANCE_API_KEY     = os.getenv('BINANCE_API_KEY', '')
+BINANCE_SECRET_KEY  = os.getenv('BINANCE_SECRET_KEY', '')
+BINANCE_TESTNET     = os.getenv('BINANCE_TESTNET', 'True').lower() == 'true'

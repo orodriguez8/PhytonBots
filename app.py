@@ -24,25 +24,52 @@ def obtener_datos_alpaca(*args,**kw): return None
 try:
     from trading_bot.bot.trading_bot import TradingBot
     from trading_bot.config import (
-        CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS, WATCHLIST
+        CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS, WATCHLIST,
+        BINANCE_API_KEY, TRADING_MODE_CRYPTO
     )
+    # Alpaca
     from trading_bot.ejecucion.alpaca_orders import (
-        obtener_cuenta as real_account,
-        obtener_posiciones_abiertas as real_pos,
-        obtener_posiciones_cerradas as real_history,
-        obtener_ordenes_activas as real_orders,
-        cancelar_todas_las_ordenes as real_cancel,
-        colocar_orden_mercado as real_order
+        obtener_cuenta as alp_account,
+        obtener_posiciones_abiertas as alp_pos,
+        obtener_posiciones_cerradas as alp_history,
+        obtener_ordenes_activas as alp_orders,
+        cancelar_todas_las_ordenes as alp_cancel,
+        colocar_orden_mercado as alp_order
     )
-    from trading_bot.data.alpaca_feed import obtener_datos_alpaca as real_feed
+    from trading_bot.data.alpaca_feed import obtener_datos_alpaca as alp_feed
     
-    obtener_cuenta, obtener_posiciones_abiertas, obtener_posiciones_cerradas, obtener_ordenes_activas, cancelar_todas_las_ordenes, colocar_orden_mercado, obtener_datos_alpaca = \
-        real_account, real_pos, real_history, real_orders, real_cancel, real_order, real_feed
+    # CCXT / Binance
+    from trading_bot.ejecucion.ccxt_orders import (
+        obtener_cuenta_ccxt, 
+        obtener_posiciones_abiertas_ccxt,
+        colocar_orden_mercado_ccxt
+    )
+    from trading_bot.data.ccxt_feed import obtener_datos_ccxt
 
+    # Mapeo de funciones inteligentes
+    def get_data(symbol):
+        is_crypto = 'USD' in symbol or '/' in symbol
+        if is_crypto and TRADING_MODE_CRYPTO == 'BINANCE' and BINANCE_API_KEY:
+            return obtener_datos_ccxt(symbol)
+        return alp_feed(symbol)
 
+    def get_account():
+        if TRADING_MODE_CRYPTO == 'BINANCE' and BINANCE_API_KEY:
+            return obtener_cuenta_ccxt()
+        return alp_account()
 
-    
-    logger.info("✅ Módulos internos listos.")
+    def get_positions():
+        if TRADING_MODE_CRYPTO == 'BINANCE' and BINANCE_API_KEY:
+            return obtener_posiciones_abiertas_ccxt()
+        return alp_pos()
+
+    def place_order(symbol, qty, side, tp=None, sl=None):
+        is_crypto = 'USD' in symbol or '/' in symbol
+        if is_crypto and TRADING_MODE_CRYPTO == 'BINANCE' and BINANCE_API_KEY:
+            return colocar_orden_mercado_ccxt(symbol, qty, side)
+        return alp_order(symbol, qty, side, tp, sl)
+
+    logger.info("✅ Módulos internos (Alpaca + CCXT) listos.")
 except Exception:
     logger.error(f"⚠️ Error cargando módulos:\n{traceback.format_exc()}")
     WATCHLIST = ['AAPL', 'TSLA']; CAPITAL_INICIAL = 10000.0; RIESGO_POR_OPERACION = 0.02; MIN_CONFLUENCIAS = 3
@@ -73,20 +100,23 @@ def trading_loop():
             buying_power = real_equity
             positions_list = []
             
-            if ALPACA_READY:
-                acc = obtener_cuenta()
+            if ALPACA_READY or BINANCE_API_KEY:
+                acc = get_account()
                 if acc:
                     real_equity = float(acc.get('nav', real_equity))
                     buying_power = float(acc.get('margen_libre', real_equity))
                 
-                positions_list = obtener_posiciones_abiertas()
-                active_orders = obtener_ordenes_activas()
+                positions_list = get_positions()
+                active_orders = [] # Por ahora simple
+                if ALPACA_READY: 
+                    try: active_orders = alp_orders()
+                    except: pass
 
             logger.info(f"--- 🌀 CICLO: Equity ${real_equity} | BP ${buying_power} | Posiciones: {len(positions_list)} ---")
             
             for symbol in WATCHLIST:
                 try:
-                    datos = obtener_datos_alpaca(symbol=symbol)
+                    datos = get_data(symbol)
                     if datos is None or datos.empty:
                         logger.warning(f"⚠️ {symbol}: Sin datos, saltando.")
                         continue
@@ -99,12 +129,12 @@ def trading_loop():
                     # Actualizar log para dashboard
                     LAST_RUN_LOG[symbol] = {'time': datetime.datetime.now().strftime('%H:%M:%S'), 'dir': dir_, 'reason': dec['razon']}
 
-                    # Sincronización: normalizamos (AVAXUSD vs AVAX/USD)
+                    # Normalización de símbolos para matching
                     norm_sym = symbol.replace('/', '').upper()
                     current_pos = next((p for p in positions_list if p['instrumento'].replace('/', '').upper() == norm_sym), None)
                     pending_order = next((o for o in active_orders if o['symbol'].replace('/', '').upper() == norm_sym), None)
 
-                    if ALPACA_READY:
+                    if ALPACA_READY or BINANCE_API_KEY:
                         if current_pos:
                             # YA TENEMOS POSICIÓN: ¿Debemos cerrar?
                             is_long = current_pos['direccion'] == 'LONG'
@@ -113,16 +143,15 @@ def trading_loop():
                             if should_close:
                                 logger.info(f"🛑 CERRANDO {symbol} (Señal: {dir_})")
                                 side_close = 'sell' if is_long else 'buy'
-                                colocar_orden_mercado(symbol, current_pos['unidades'], side_close)
+                                place_order(symbol, current_pos['unidades'], side_close)
                                 BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M'), 'sym': symbol, 'type': f"CLOSE {current_pos['direccion']}", 'price': safe_float(datos['close'].iloc[-1]), 'reason': f"Señal {dir_}"})
                         
                         elif pending_order:
-                            # YA HAY UNA ORDEN PENDIENTE: No hacemos nada para evitar duplicidad
+                            # YA HAY UNA ORDEN PENDIENTE
                             logger.info(f"⏳ {symbol}: Ya hay una orden pendiente ({pending_order['side']}), esperando...")
 
                         elif dir_ != 'NEUTRAL':
                             # NO HAY POSICIÓN NI ORDEN: ¿Debemos abrir?
-
                             side = 'buy' if dir_ == 'LONG' else 'sell'
                             ges = dec.get('gestion', {})
                             price = float(datos['close'].iloc[-1])
@@ -139,15 +168,13 @@ def trading_loop():
                             if qty > 0:
                                 try:
                                     logger.info(f"🚀 ABRIENDO: {symbol} x{qty} {side.upper()}")
-                                    colocar_orden_mercado(symbol, qty, side, ges.get('take_profit'), ges.get('stop_loss'))
+                                    place_order(symbol, qty, side, ges.get('take_profit'), ges.get('stop_loss'))
                                     BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M'), 'sym': symbol, 'type': f"OPEN {dir_}", 'price': safe_float(price), 'reason': 'Ejecutado'})
                                     buying_power -= (qty * price)
                                 except Exception as e_order:
-                                    logger.error(f"❌ Error Alpaca {symbol}: {e_order}")
+                                    logger.error(f"❌ Error Ejecución {symbol}: {e_order}")
                             else:
-                                # Caso de insuficiente BP para acciones completas
-                                logger.warning(f"⚠️ {symbol}: Cantidad calculada 0 (BP Sugerido: ${safe_float(safe_bp_cap)} < Precio: ${price})")
-                                BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M'), 'sym': symbol, 'type': 'SKIP', 'price': price, 'reason': f'Insuficiente BP (${safe_float(safe_bp_cap)})'})
+                                logger.warning(f"⚠️ {symbol}: Cantidad 0.")
 
 
                     elif dir_ != 'NEUTRAL':
@@ -176,9 +203,11 @@ def toggle():
 @app.route('/api/summary')
 def summary():
     try:
-        is_ready = bool(os.getenv('ALPACA_API_KEY'))
+        is_alpaca = bool(os.getenv('ALPACA_API_KEY'))
+        is_binance = bool(os.getenv('BINANCE_API_KEY'))
+        
         data = {
-            'mode': 'ALPACA' if is_ready else 'SIM', 
+            'mode': 'BINANCE' if (is_binance and TRADING_MODE_CRYPTO == 'BINANCE') else ('ALPACA' if is_alpaca else 'SIM'), 
             'auto': AUTO_TRADING_ACTIVE, 
             'summary': LAST_RUN_LOG, 
             'history': BOT_HISTORY, 
@@ -188,38 +217,45 @@ def summary():
             'pos': [],
             'orders': []
         }
-        if is_ready:
-            acc = obtener_cuenta()
+        
+        if is_alpaca or is_binance:
+            acc = get_account()
             if acc:
                 data['equity'] = safe_float(acc.get('nav', 0))
                 data['bp'] = safe_float(acc.get('margen_libre', 0))
-                raw_pos = obtener_posiciones_abiertas()
-                data['pos'] = [{ 's': p['instrumento'], 'd': p['direccion'], 'q': p['unidades'], 'e': safe_float(p['precio_medio']), 'c': safe_float(p.get('precio_actual', 0)), 'p': safe_float(p['pl']), 'pct': safe_float(p.get('pl_pct', 0)) } for p in raw_pos]
-                data['orders'] = obtener_ordenes_activas()
                 
-                # TOTAL OPEN P/L: Suma de lo que ganan las posiciones abiertas
+                raw_pos = get_positions()
+                data['pos'] = [{ 's': p['instrumento'], 'd': p['direccion'], 'q': p['unidades'], 'e': safe_float(p['precio_medio']), 'c': safe_float(p.get('precio_actual', 0)), 'p': safe_float(p['pl']), 'pct': safe_float(p.get('pl_pct', 0)) } for p in raw_pos]
+                
+                # Para órdenes activas, seguimos con Alpaca por ahora o vacio para Binance
+                if is_alpaca:
+                    try: data['orders'] = alp_orders()
+                    except: pass
+                
+                # TOTAL OPEN P/L
                 total_open_pl = sum(p['p'] for p in data['pos'])
                 data['pl'] = safe_float(total_open_pl)
                 
-                # DAY P/L: Beneficio del día (desde el cierre de ayer)
-                data['day_pl'] = safe_float(acc.get('pl', 0))
-                
-                # Historial de trades cerrados
-                data['closed'] = obtener_posiciones_cerradas()
+                # Historial (Alpaca)
+                if is_alpaca:
+                    try: data['closed'] = alp_history()
+                    except: pass
 
         return jsonify(data)
 
-
-    except Exception as e: return jsonify({'error': str(e)}), 500
+    except Exception as e: 
+        logger.error(f"Error en summary: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/cancel_all', methods=['POST'])
 def cancel_all():
     global BOT_HISTORY
-    ok = cancelar_todas_las_ordenes()
-    if ok:
+    # Por ahora cancelamos en Alpaca si está activo
+    if bool(os.getenv('ALPACA_API_KEY')):
+        alp_cancel()
         BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M'), 'sym': 'ALL', 'type': 'CANCEL', 'price': 0, 'reason': 'Manual cancel'})
         return jsonify({'ok': True})
-    return jsonify({'ok': False, 'error': 'Error Alpaca'})
+    return jsonify({'ok': False, 'error': 'No activo o no soportado'})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=7860)
