@@ -25,7 +25,9 @@ function updateUI(data) {
     
     // 3. Main Stats
     document.getElementById('equity').innerText = `$${data.equity.toLocaleString()}`;
+    document.getElementById('bp').innerText = `$${(data.bp || 0).toLocaleString()}`;
     const plEl = document.getElementById('plTotal');
+
     plEl.innerText = `${data.pl >= 0 ? '+' : ''}$${data.pl.toFixed(2)}`;
     plEl.className = data.pl >= 0 ? 'up' : 'down';
     

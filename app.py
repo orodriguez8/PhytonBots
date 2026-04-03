@@ -28,12 +28,14 @@ try:
     from trading_bot.ejecucion.alpaca_orders import (
         obtener_cuenta as real_account,
         obtener_posiciones_abiertas as real_pos,
+        obtener_ordenes_activas as real_orders,
         colocar_orden_mercado as real_order
     )
     from trading_bot.data.alpaca_feed import obtener_datos_alpaca as real_feed
     
-    obtener_cuenta, obtener_posiciones_abiertas, colocar_orden_mercado, obtener_datos_alpaca = \
-        real_account, real_pos, real_order, real_feed
+    obtener_cuenta, obtener_posiciones_abiertas, obtener_ordenes_activas, colocar_orden_mercado, obtener_datos_alpaca = \
+        real_account, real_pos, real_orders, real_order, real_feed
+
     
     logger.info("✅ Módulos internos listos.")
 except Exception:
@@ -120,7 +122,7 @@ def trading_loop():
                                 logger.info(f"🛡️ Ajustando {symbol} al 10% del BP.")
 
                             is_crypto = 'USD' in symbol or '/' in symbol
-                            qty = round(raw_qty, 4) if is_crypto else max(1, int(raw_qty))
+                            qty = round(raw_qty, 4) if is_crypto else int(raw_qty)
 
                             if qty > 0:
                                 try:
@@ -158,14 +160,27 @@ def toggle():
 def summary():
     try:
         is_ready = bool(os.getenv('ALPACA_API_KEY'))
-        data = {'mode': 'ALPACA' if is_ready else 'SIM', 'auto': AUTO_TRADING_ACTIVE, 'summary': LAST_RUN_LOG, 'history': BOT_HISTORY, 'equity': 10000.0, 'pl': 0.0, 'pos': []}
+        data = {
+            'mode': 'ALPACA' if is_ready else 'SIM', 
+            'auto': AUTO_TRADING_ACTIVE, 
+            'summary': LAST_RUN_LOG, 
+            'history': BOT_HISTORY, 
+            'equity': 10000.0, 
+            'bp': 10000.0,
+            'pl': 0.0, 
+            'pos': [],
+            'orders': []
+        }
         if is_ready:
             acc = obtener_cuenta()
             if acc:
                 data['equity'] = safe_float(acc.get('nav', 0))
+                data['bp'] = safe_float(acc.get('margen_libre', 0))
                 data['pl'] = safe_float(acc.get('pl', 0))
                 raw_pos = obtener_posiciones_abiertas()
                 data['pos'] = [{ 's': p['instrumento'], 'q': p['unidades'], 'e': safe_float(p['precio_medio']), 'c': safe_float(p.get('precio_actual', 0)), 'p': safe_float(p['pl']), 'pct': safe_float(p.get('pl_pct', 0)) } for p in raw_pos]
+                data['orders'] = obtener_ordenes_activas()
+
         return jsonify(data)
     except Exception as e: return jsonify({'error': str(e)}), 500
 

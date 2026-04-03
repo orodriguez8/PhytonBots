@@ -59,23 +59,45 @@ def obtener_posiciones_abiertas():
         print(f"Error en obtener_posiciones: {e}")
         return []
 
+def obtener_ordenes_activas():
+    """
+    Devuelve lista de órdenes pendientes (no ejecutadas).
+    """
+    try:
+        api = _get_api()
+        orders = api.list_orders(status='open', limit=50)
+        return [{
+            'id': o.id,
+            'symbol': o.symbol,
+            'qty': o.qty,
+            'side': o.side,
+            'type': o.type,
+            'status': o.status,
+            'created_at': o.created_at.strftime('%H:%M:%S')
+        } for o in orders]
+    except Exception as e:
+        print(f"Error en obtener_ordenes: {e}")
+        return []
+
 def colocar_orden_mercado(symbol, qty, side, take_profit=None, stop_loss=None):
     """
-    Ejecuta una orden de mercado en Alpaca.
+    Ejecuta una orden de mercado en Alpaca. 
+    Si hay SL/TP, crea una orden Bracket.
     """
     try:
         api = _get_api()
         
-        # Alpaca requiere un objeto bracket para TP/SL
-        order_type = 'market'
-        time_in_force = 'gtc'
+        # Primero cancelamos órdenes pendientes de este símbolo para evitar conflictos
+        # (Opcional, pero recomendado en bots simples)
+        # api.cancel_all_orders(symbol=symbol)
         
         order = api.submit_order(
             symbol=symbol,
             qty=qty,
             side=side.lower(), # buy or sell
-            type=order_type,
-            time_in_force=time_in_force,
+            type='market',
+            time_in_force='gtc',
+            order_class='bracket' if (take_profit or stop_loss) else 'simple',
             take_profit=dict(limit_price=take_profit) if take_profit else None,
             stop_loss=dict(stop_price=stop_loss) if stop_loss else None,
         )
@@ -83,3 +105,4 @@ def colocar_orden_mercado(symbol, qty, side, take_profit=None, stop_loss=None):
     except Exception as e:
         print(f"Error colocando orden en {symbol}: {e}")
         raise e
+

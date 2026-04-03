@@ -21,8 +21,12 @@
             <div class="stat-card">
                 <span>Total Equity</span>
                 <h2 id="equity">$0.00</h2>
-                <b id="plTotal" class="up">+$0.00</b>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <b id="plTotal" class="up">+$0.00</b>
+                    <span id="bpLabel" style="font-size:0.65rem; color:var(--dim); font-weight:700;">BP: <span id="bp" style="color:var(--text)">$0.00</span></span>
+                </div>
             </div>
+
 
             <button id="toggleBtn" class="btn btn-off" onclick="toggle()">
                 <i data-lucide="play"></i> START BOT
