@@ -82,27 +82,36 @@ def obtener_ordenes_activas():
 def colocar_orden_mercado(symbol, qty, side, take_profit=None, stop_loss=None):
     """
     Ejecuta una orden de mercado en Alpaca. 
-    Si hay SL/TP, crea una orden Bracket.
+    Si hay SL/TP, crea una orden Bracket (solo para Stocks).
     """
     try:
         api = _get_api()
         
-        # Primero cancelamos órdenes pendientes de este símbolo para evitar conflictos
-        # (Opcional, pero recomendado en bots simples)
-        # api.cancel_all_orders(symbol=symbol)
+        # Alpaca NO permite Brackets (SL/TP) en Cripto
+        is_crypto = 'USD' in symbol or '/' in symbol
         
+        order_class = 'simple'
+        tp_dict = None
+        sl_dict = None
+        
+        if not is_crypto and (take_profit or stop_loss):
+            order_class = 'bracket'
+            tp_dict = dict(limit_price=take_profit) if take_profit else None
+            sl_dict = dict(stop_price=stop_loss) if stop_loss else None
+
         order = api.submit_order(
             symbol=symbol,
             qty=qty,
-            side=side.lower(), # buy or sell
+            side=side.lower(),
             type='market',
             time_in_force='gtc',
-            order_class='bracket' if (take_profit or stop_loss) else 'simple',
-            take_profit=dict(limit_price=take_profit) if take_profit else None,
-            stop_loss=dict(stop_price=stop_loss) if stop_loss else None,
+            order_class=order_class,
+            take_profit=tp_dict,
+            stop_loss=sl_dict,
         )
         return order
     except Exception as e:
         print(f"Error colocando orden en {symbol}: {e}")
         raise e
+
 

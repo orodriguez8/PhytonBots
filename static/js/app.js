@@ -113,7 +113,24 @@ function updateUI(data) {
         </div>
     `).join('');
 
+    // 7. Orders
+    updateOrders(data);
+    
     lucide.createIcons();
+}
+
+function updateOrders(data) {
+    const ordersEl = document.getElementById('pendingOrders');
+    if (!data.orders || data.orders.length === 0) {
+        ordersEl.innerHTML = `<span style="font-size:0.8rem; color:var(--dim)">No pending orders.</span>`;
+        return;
+    }
+    ordersEl.innerHTML = data.orders.map(o => `
+        <div class="sym-card" style="display:flex; justify-content:space-between; width:100%; margin-bottom:0.4rem; padding:0.5rem; border:1px solid var(--border)">
+            <span><b class="${o.side == 'buy' ? 'up' : 'down'}">${o.side.toUpperCase()}</b> ${o.symbol} x${o.qty}</span>
+            <span style="font-size:0.7rem; opacity:0.6">${o.status} @ ${o.created_at}</span>
+        </div>
+    `).join('');
 }
 
 async function toggle() {
