@@ -29,8 +29,7 @@ MULTIPLICADOR_ATR_TP = 3.0       # Take Profit = entrada ± (ATR × 3.0)
 
 # --- Vigilancia (Watchlist) ---
 WATCHLIST = [
-    'AAPL', 'TSLA', 'NVDA', 'MSFT', 'AMZN', 'META', # Acciones (Alpaca)
-    'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'AVAX/USDT' # Cripto (Binance)
+    'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'AVAX/USDT', 'PEPE/USDT' # Cripto (Binance)
 ]
 # Nota: Forex en Alpaca requiere permisos específicos, pero el bot ya lo soporta.
 
@@ -62,12 +61,6 @@ PRECIO_INICIAL      = 1500.0     # Precio de partida (ej: índice, oro…)
 TENDENCIA           = 0.0004     # Tendencia por vela (positivo = alcista)
 VOLATILIDAD         = 0.013      # Volatilidad por vela
 SEMILLA_ALEATORIA   = 99         # Semilla para reproducibilidad
-
-# --- Conexión Oanda (Legacy) ---
-# Estos valores actúan como fallback si no se definen en el archivo .env o en HF Secrets
-OANDA_INSTRUMENT    = os.getenv('OANDA_INSTRUMENT', 'EUR_USD')  # Par a operar
-OANDA_GRANULARITY   = os.getenv('OANDA_GRANULARITY', 'H1')       # Temporalidad
-OANDA_ENVIRONMENT   = os.getenv('OANDA_ENVIRONMENT', 'practice') # 'practice' o 'live'
 
 # --- Conexión Binance (CCXT) ---
 BINANCE_API_KEY     = os.getenv('BINANCE_API_KEY', '')
