@@ -27,8 +27,10 @@ function updateUI(data) {
     document.getElementById('equity').innerText = `$${data.equity.toLocaleString()}`;
     document.getElementById('bp').innerText = `$${(data.bp || 0).toLocaleString()}`;
     const plEl = document.getElementById('plTotal');
-
-    plEl.innerText = `${data.pl >= 0 ? '+' : ''}$${data.pl.toFixed(2)}`;
+    plEl.innerHTML = `
+        <div style="font-size:1.1rem; line-height:1">${data.pl >= 0 ? '+' : ''}$${data.pl.toFixed(2)}</div>
+        <div style="font-size:0.65rem; opacity:0.6; font-weight:400; margin-top:2px">Day: ${data.day_pl >= 0 ? '+' : ''}$${data.day_pl.toFixed(2)}</div>
+    `;
     plEl.className = data.pl >= 0 ? 'up' : 'down';
     
     // 4. Watchlist

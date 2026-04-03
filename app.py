@@ -191,12 +191,19 @@ def summary():
             if acc:
                 data['equity'] = safe_float(acc.get('nav', 0))
                 data['bp'] = safe_float(acc.get('margen_libre', 0))
-                data['pl'] = safe_float(acc.get('pl', 0))
                 raw_pos = obtener_posiciones_abiertas()
                 data['pos'] = [{ 's': p['instrumento'], 'd': p['direccion'], 'q': p['unidades'], 'e': safe_float(p['precio_medio']), 'c': safe_float(p.get('precio_actual', 0)), 'p': safe_float(p['pl']), 'pct': safe_float(p.get('pl_pct', 0)) } for p in raw_pos]
                 data['orders'] = obtener_ordenes_activas()
+                
+                # TOTAL OPEN P/L: Suma de lo que ganan las posiciones abiertas
+                total_open_pl = sum(p['p'] for p in data['pos'])
+                data['pl'] = safe_float(total_open_pl)
+                
+                # DAY P/L: Beneficio del día (desde el cierre de ayer)
+                data['day_pl'] = safe_float(acc.get('pl', 0))
 
         return jsonify(data)
+
     except Exception as e: return jsonify({'error': str(e)}), 500
 
 @app.route('/api/cancel_all', methods=['POST'])
