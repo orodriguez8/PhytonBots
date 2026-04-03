@@ -108,8 +108,8 @@ def colocar_orden_mercado(symbol, qty, side, take_profit=None, stop_loss=None):
         
         if not is_crypto and (take_profit or stop_loss):
             order_class = 'bracket'
-            tp_dict = dict(limit_price=take_profit) if take_profit else None
-            sl_dict = dict(stop_price=stop_loss) if stop_loss else None
+            tp_dict = dict(limit_price=round(float(take_profit), 2)) if take_profit else None
+            sl_dict = dict(stop_price=round(float(stop_loss), 2)) if stop_loss else None
 
         order = api.submit_order(
             symbol=symbol,
