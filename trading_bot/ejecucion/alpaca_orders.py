@@ -61,26 +61,49 @@ def obtener_posiciones_abiertas():
 
 def obtener_posiciones_cerradas():
     """
-    Obtiene el historial de posiciones cerradas recientemente.
+    Obtiene el historial de posiciones cerradas recientemente con P/L realizado.
     """
     try:
         api = _get_api()
         # Buscamos 'FILL' (ejecuciones)
         activities = api.get_activities(activity_types='FILL')
         
-        cerradas = []
-        # Agrupamos por símbolo para simplificar el historial
-        for act in activities:
-            cerradas.append({
-                's': act.symbol,
-                'q': float(act.qty),
-                'p': float(act.price),
-                'side': act.side.upper(),
-                'time': act.transaction_time.strftime('%Y-%m-%d %H:%M')
-            })
-        return cerradas[:10] # Solo las últimas 10
+        # Filtrar solo las que tienen precio y cantidad
+        fills = [f for f in activities if hasattr(f, 'price') and hasattr(f, 'qty')]
+        
+        res = []
+        # Mapa simple para recordar el "cost basis" aproximado (solo para el historial visual)
+        buys = {} # symbol -> last_buy_price
+        
+        for f in reversed(fills): # Del más antiguo al más nuevo para rastrear buys
+            sym = f.symbol
+            price = float(f.price)
+            qty = float(f.qty)
+            side = f.side.upper()
+            
+            if side == 'BUY':
+                buys[sym] = price
+            elif side == 'SELL' and sym in buys:
+                # Si vendemos y tenemos un precio de compra guardado, calculamos P/L
+                entry = buys[sym]
+                pl = (price - entry) * qty
+                res.insert(0, {
+                    's': sym,
+                    'side': 'SELL',
+                    'q': qty,
+                    'p': price,
+                    'entry': entry,
+                    'pl': round(pl, 2),
+                    'time': f.transaction_time.strftime('%H:%M')
+                })
+        
+        # Si no hay ventas emparejadas, mostrar rellenos sueltos
+        if not res:
+            return [{ 's': f.symbol, 'side': f.side.upper(), 'q': float(f.qty), 'p': float(f.price), 'pl': 0, 'time': f.transaction_time.strftime('%H:%M') } for f in fills[:10]]
+            
+        return res[:10]
     except Exception as e:
-        print(f"Error en historial: {e}")
+        print(f"Error en historial de cerradas: {e}")
         return []
 
 def obtener_ordenes_activas():

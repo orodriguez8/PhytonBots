@@ -112,6 +112,9 @@ function updateUI(data) {
                 <td><span class="badge ${c.side == 'BUY' ? 'up' : 'down'}">${c.side}</span></td>
                 <td>${c.q}</td>
                 <td>$${c.p}</td>
+                <td class="${c.pl >= 0 ? 'up' : 'down'}" style="font-weight:700">
+                    ${c.side == 'SELL' ? (c.pl >= 0 ? '+' : '') + '$' + c.pl.toFixed(2) : '-'}
+                </td>
                 <td style="font-size:0.7rem; opacity:0.6">${c.time}</td>
             </tr>
         `).join('');
