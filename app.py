@@ -179,7 +179,7 @@ def summary():
                 data['bp'] = safe_float(acc.get('margen_libre', 0))
                 data['pl'] = safe_float(acc.get('pl', 0))
                 raw_pos = obtener_posiciones_abiertas()
-                data['pos'] = [{ 's': p['instrumento'], 'q': p['unidades'], 'e': safe_float(p['precio_medio']), 'c': safe_float(p.get('precio_actual', 0)), 'p': safe_float(p['pl']), 'pct': safe_float(p.get('pl_pct', 0)) } for p in raw_pos]
+                data['pos'] = [{ 's': p['instrumento'], 'd': p['direccion'], 'q': p['unidades'], 'e': safe_float(p['precio_medio']), 'c': safe_float(p.get('precio_actual', 0)), 'p': safe_float(p['pl']), 'pct': safe_float(p.get('pl_pct', 0)) } for p in raw_pos]
                 data['orders'] = obtener_ordenes_activas()
 
         return jsonify(data)

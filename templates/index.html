@@ -54,6 +54,7 @@
                         <thead>
                             <tr>
                                 <th>Symbol</th>
+                                <th>Type</th>
                                 <th>Qty</th>
                                 <th>Entry</th>
                                 <th>Current</th>
@@ -61,7 +62,7 @@
                             </tr>
                         </thead>
                         <tbody id="posTable">
-                            <tr><td colspan="5" style="text-align:center; padding:2rem 0; color:var(--dim)">Loading...</td></tr>
+                            <tr><td colspan="6" style="text-align:center; padding:2rem 0; color:var(--dim)">Loading...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -70,13 +71,22 @@
                 <div id="posCards" class="pos-cards-mobile" style="display:none"></div>
             </div>
 
-            <!-- PENDING ORDERS -->
+            <!-- PENDING ORDERS (Collapsible + Searchable) -->
             <div class="glass" style="margin-top:1.5rem; padding:1.5rem">
-                <h3 style="display:flex; align-items:center; gap:0.5rem; font-size:1rem; margin-bottom:1rem">
-                    <i data-lucide="clock" size="18"></i> PENDING ORDERS
-                </h3>
-                <div id="pendingOrders" class="orders-list"></div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem">
+                    <h3 style="display:flex; align-items:center; gap:0.5rem; font-size:1rem; margin:0">
+                        <i data-lucide="clock" size="18"></i> PENDING ORDERS
+                    </h3>
+                    <div style="display:flex; gap:0.5rem; align-items:center;">
+                        <input type="text" id="orderSearch" onkeyup="filterOrders()" placeholder="Search symbol..." style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:6px; padding:4px 8px; font-size:0.75rem">
+                        <button onclick="toggleOrders()" style="background:none; border:none; color:var(--dim); cursor:pointer;"><i data-lucide="chevron-down" id="orderChevron"></i></button>
+                    </div>
+                </div>
+                <div id="ordersContainer">
+                    <div id="pendingOrders" class="orders-list"></div>
+                </div>
             </div>
+
 
             <!-- MARKET INSIGHTS -->
             <div class="glass" style="margin-top:1.5rem; padding:1.5rem">
