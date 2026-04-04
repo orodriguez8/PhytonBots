@@ -1,7 +1,7 @@
 import ccxt
 import pandas as pd
 import time
-from ..config import CCXT_API_KEY, CCXT_SECRET_KEY, CCXT_TESTNET, CCXT_EXCHANGE_ID
+from src.core.config import CCXT_API_KEY, CCXT_SECRET_KEY, CCXT_TESTNET, CCXT_EXCHANGE_ID
 
 def _get_exchange():
     """
