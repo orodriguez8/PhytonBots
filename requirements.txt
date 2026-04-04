@@ -10,6 +10,6 @@ alpaca-trade-api
 v20
 requests
 websocket-client
-urllib3
+urllib3<2.0.0
 ccxt
-pandas-ta
+pandas-ta==0.3.14b

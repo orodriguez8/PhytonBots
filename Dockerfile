@@ -1,10 +1,10 @@
 # Mera Victorino Pro v3.0 — Lightweight Docker Image
-FROM python:3.12-slim
+FROM python:3.11-bookworm
 
 WORKDIR /code
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
