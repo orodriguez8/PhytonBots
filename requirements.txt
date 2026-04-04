@@ -12,4 +12,4 @@ requests
 websocket-client
 urllib3<2.0.0
 ccxt
-pandas-ta==0.3.14b
+pandas-ta==0.3.14b0
