@@ -6,10 +6,10 @@ gevent-websocket
 pandas<2.2.0
 numpy<2.0.0
 python-dotenv
-alpaca-trade-api
+alpaca-trade-api==3.2.0
 v20
 requests
 websocket-client
 urllib3<2.0.0
 ccxt
-pandas-ta-classic
+pandas-ta-classic==0.3.78
