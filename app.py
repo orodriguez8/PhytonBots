@@ -28,6 +28,8 @@ try:
     from trading_bot.ejecucion.alpaca_orders import (
         obtener_cuenta,
         obtener_posiciones_abiertas,
+        obtener_posiciones_cerradas,
+        obtener_ordenes_activas,
         colocar_orden_mercado,
         cancelar_todas_las_ordenes,
     )
@@ -68,6 +70,19 @@ try:
         if IS_ALPACA:
             return obtener_posiciones_abiertas()
         return obtener_posiciones_abiertas_ccxt()
+
+    def get_orders():
+        if not LIVE_ENABLED:
+            return []
+        if IS_ALPACA:
+            return obtener_ordenes_activas()
+        return []
+
+    def get_closed_positions():
+        if not LIVE_ENABLED:
+            return []
+        if IS_ALPACA:
+            return obtener_posiciones_cerradas()
         return []
 
     def place_order(symbol, qty, side, tp=None, sl=None):
@@ -76,7 +91,6 @@ try:
         if IS_ALPACA:
             return colocar_orden_mercado(symbol, qty, side, tp, sl)
         return colocar_orden_mercado_ccxt(symbol, qty, side)
-        return None
 
     def cancel_all_orders():
         if not LIVE_ENABLED:
@@ -208,7 +222,9 @@ def summary():
             'equity': 10000.0, 
             'bp': 10000.0,
             'pl': 0.0, 
+            'day_pl': 0.0,
             'pos': [],
+            'closed': [],
             'orders': []
         }
         if LIVE_ENABLED:
@@ -216,10 +232,16 @@ def summary():
             if acc:
                 data['equity'] = safe_float(acc.get('nav', 0))
                 data['bp'] = safe_float(acc.get('margen_libre', 0))
+                data['day_pl'] = safe_float(acc.get('pl', 0))
+                
                 raw_pos = get_positions()
                 data['pos'] = [{ 's': p['instrumento'], 'd': p['direccion'], 'q': p['unidades'], 'e': safe_float(p['precio_medio']), 'c': safe_float(p.get('precio_actual', 0)), 'p': safe_float(p['pl']), 'pct': safe_float(p.get('pl_pct', 0)) } for p in raw_pos]
+                
                 total_open_pl = sum(p['p'] for p in data['pos'])
                 data['pl'] = safe_float(total_open_pl)
+                
+                data['closed'] = get_closed_positions()
+                data['orders'] = get_orders()
         return jsonify(data)
     except Exception as e:
         logger.error(f"Error en summary: {traceback.format_exc()}")
