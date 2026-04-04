@@ -79,7 +79,7 @@ def main():
     print()
     print("   # Opción B — CCXT (criptomonedas):")
     print("   import ccxt")
-    print("   exchange = ccxt.binance()")
+    print("   exchange = ccxt.coinbase()  # o ccxt.kucoin(), ccxt.kraken(), etc.")
     print("   ohlcv = exchange.fetch_ohlcv('BTC/USDT', '1h', limit=200)")
     print("   datos = pd.DataFrame(ohlcv, columns=['timestamp','open','high','low','close','volume'])")
     print()

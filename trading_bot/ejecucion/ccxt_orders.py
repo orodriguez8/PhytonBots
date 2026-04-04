@@ -1,56 +1,55 @@
 import os
 import ccxt
 import time
-from ..config import BINANCE_API_KEY, BINANCE_SECRET_KEY, BINANCE_TESTNET
+from ..config import CCXT_API_KEY, CCXT_SECRET_KEY, CCXT_TESTNET, CCXT_EXCHANGE_ID
 
 def _get_exchange():
     """
-    Inicializa el exchange de Binance via CCXT.
+    Inicializa el exchange configurado via CCXT.
     """
     params = {
-        'apiKey': BINANCE_API_KEY or os.getenv('BINANCE_API_KEY', ''),
-        'secret': BINANCE_SECRET_KEY or os.getenv('BINANCE_SECRET_KEY', ''),
+        'apiKey': CCXT_API_KEY or os.getenv('CCXT_API_KEY', os.getenv('COINBASE_API_KEY', '')),
+        'secret': CCXT_SECRET_KEY or os.getenv('CCXT_SECRET_KEY', os.getenv('COINBASE_SECRET_KEY', '')),
         'enableRateLimit': True,
-        'options': {
-            'defaultType': 'spot' # Solo spot para empezar
-        }
     }
-    
-    exchange = ccxt.binance(params)
-    
-    if BINANCE_TESTNET or os.getenv('BINANCE_TESTNET', 'True').lower() == 'true':
+
+    exchange_cls = getattr(ccxt, CCXT_EXCHANGE_ID, None)
+    if exchange_cls is None:
+        raise ValueError(f"Exchange CCXT no soportado: {CCXT_EXCHANGE_ID}")
+
+    exchange = exchange_cls(params)
+    if CCXT_TESTNET and getattr(exchange, 'urls', None) and exchange.urls.get('test'):
         exchange.set_sandbox_mode(True)
-        
     return exchange
 
 def obtener_cuenta_ccxt():
     """
-    Obtiene el balance de la cuenta de Binance.
+    Obtiene el balance de la cuenta del exchange configurado.
     """
     try:
         exchange = _get_exchange()
         balance = exchange.fetch_balance()
         
-        # En Binance no hay un 'Equity' único como en Alpaca, sumamos USDT y Valor estimado
-        usdt_free = balance.get('USDT', {}).get('free', 0.0)
-        usdt_total = balance.get('USDT', {}).get('total', 0.0)
+        # En Coinbase buscamos balance en USD o USDC
+        main_free = balance.get('USD', {}).get('free', 0.0) or balance.get('USDC', {}).get('free', 0.0)
+        main_total = balance.get('USD', {}).get('total', 0.0) or balance.get('USDC', {}).get('total', 0.0)
         
         return {
-            'id': 'Binance_Acc',
-            'moneda': 'USDT',
-            'balance': float(usdt_free),
-            'nav': float(usdt_total), # Equity simplificado
-            'margen_libre': float(usdt_free),
-            'pl': 0.0, # Binance no da P/L diario tan fácil como Alpaca
+            'id': f'{CCXT_EXCHANGE_ID}_Acc',
+            'moneda': 'USD',
+            'balance': float(main_free),
+            'nav': float(main_total),
+            'margen_libre': float(main_free),
+            'pl': 0.0,
             'posiciones': 0
         }
     except Exception as e:
-        print(f"Error en obtener_cuenta_ccxt: {e}")
+        print(f"Error en obtener_cuenta_ccxt ({CCXT_EXCHANGE_ID}): {e}")
         return None
 
 def obtener_posiciones_abiertas_ccxt():
     """
-    Obtiene saldos de criptos que no sean USDT (simulando posiciones).
+    Obtiene saldos de criptos que no sean USD/USDC.
     """
     try:
         exchange = _get_exchange()
@@ -58,9 +57,8 @@ def obtener_posiciones_abiertas_ccxt():
         
         res = []
         for asset, data in balance.get('total', {}).items():
-            if asset != 'USDT' and data > 0:
-                # Obtenemos precio actual para calcular P/L aproximado
-                symbol = f"{asset}/USDT"
+            if asset not in ['USD', 'USDC'] and data > 0:
+                symbol = f"{asset}/USD"
                 try:
                     ticker = exchange.fetch_ticker(symbol)
                     current_price = ticker['last']
@@ -68,7 +66,7 @@ def obtener_posiciones_abiertas_ccxt():
                         'instrumento': symbol,
                         'direccion': 'LONG',
                         'unidades': float(data),
-                        'precio_medio': 0.0, # Binance no guarda el precio medio de compra en el balance
+                        'precio_medio': 0.0,
                         'precio_actual': float(current_price),
                         'pl': 0.0,
                         'pl_pct': 0.0
@@ -77,41 +75,38 @@ def obtener_posiciones_abiertas_ccxt():
                     continue
         return res
     except Exception as e:
-        print(f"Error en obtener_posiciones_ccxt: {e}")
+        print(f"Error en obtener_posiciones_ccxt (Coinbase): {e}")
         return []
 
 def colocar_orden_mercado_ccxt(symbol, qty, side):
     """
-    Ejecuta una orden de mercado en Binance.
+    Ejecuta una orden de mercado en el exchange configurado.
     """
     try:
         exchange = _get_exchange()
         
-        # Normalizar símbolo (BTCUSD -> BTC/USDT)
+        # Normalizar símbolo (BTCUSD -> BTC/USD)
         if '/' not in symbol:
-            symbol = symbol.replace('USD', '/USDT')
+            symbol = symbol.replace('USDT', '/USD').replace('USD', '/USD')
             
-        print(f"⚙️ CCXT: Enviando orden {side} de {qty} {symbol}")
+        print(f"⚙️ CCXT: Enviando orden {side} de {qty} {symbol} en {CCXT_EXCHANGE_ID}")
         
-        # Binance requiere el símbolo con barra en CCXT
         order = exchange.create_market_order(symbol, side.lower(), qty)
-        
         return order
     except Exception as e:
-        print(f"Error colocando orden CCXT en {symbol}: {e}")
+        print(f"Error colocando orden CCXT-{CCXT_EXCHANGE_ID} en {symbol}: {e}")
         raise e
 
 def cancelar_todas_las_ordenes_ccxt():
     """
-    Cancela todas las órdenes abiertas en el exchange.
+    Cancela todas las órdenes abiertas en el exchange configurado.
     """
     try:
         exchange = _get_exchange()
-        # Binance tiene fetch_open_orders
         open_orders = exchange.fetch_open_orders()
         for o in open_orders:
             exchange.cancel_order(o['id'], o['symbol'])
         return True
     except Exception as e:
-        print(f"Error cancelando órdenes CCXT: {e}")
+        print(f"Error cancelando órdenes CCXT-{CCXT_EXCHANGE_ID}: {e}")
         return False

@@ -1,4 +1,4 @@
-# VERSION 2.1.0 - BINANCE ONLY
+# VERSION 2.4.0 - ALPACA + CCXT
 import os, sys, io, json, logging, threading, time, datetime, traceback
 from flask import Flask, render_template, jsonify
 from flask_cors import CORS
@@ -14,15 +14,26 @@ load_dotenv()
 TOP_DIR = os.path.dirname(os.path.abspath(__file__))
 if TOP_DIR not in sys.path: sys.path.insert(0, TOP_DIR)
 
-# --- IMPORTACIÓN ROBUSTA (SOLO BINANCE) ---
+# --- IMPORTACIÓN ROBUSTA (ALPACA + CCXT) ---
 try:
     from trading_bot.bot.trading_bot import TradingBot
     from trading_bot.config import (
         CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS, WATCHLIST,
-        BINANCE_API_KEY, TRADING_MODE_CRYPTO
+        TRADING_MODE_CRYPTO,
+        ALPACA_API_KEY, ALPACA_SECRET_KEY,
+        CCXT_API_KEY, CCXT_EXCHANGE_ID,
     )
+
+    # Alpaca
+    from trading_bot.ejecucion.alpaca_orders import (
+        obtener_cuenta,
+        obtener_posiciones_abiertas,
+        colocar_orden_mercado,
+        cancelar_todas_las_ordenes,
+    )
+    from trading_bot.data.alpaca_feed import obtener_datos_alpaca
     
-    # CCXT / Binance
+    # CCXT / Exchange configurable
     from trading_bot.ejecucion.ccxt_orders import (
         obtener_cuenta_ccxt, 
         obtener_posiciones_abiertas_ccxt,
@@ -31,26 +42,56 @@ try:
     )
     from trading_bot.data.ccxt_feed import obtener_datos_ccxt
 
+    PROVIDER = (TRADING_MODE_CRYPTO or 'ALPACA').upper()
+    IS_ALPACA = PROVIDER == 'ALPACA'
+    LIVE_ENABLED = bool(ALPACA_API_KEY and ALPACA_SECRET_KEY) if IS_ALPACA else bool(CCXT_API_KEY)
+
     def get_data(symbol):
-        if BINANCE_API_KEY: return obtener_datos_ccxt(symbol)
+        if not LIVE_ENABLED:
+            return None
+        if IS_ALPACA:
+            return obtener_datos_alpaca(symbol)
+        return obtener_datos_ccxt(symbol)
         return None
 
     def get_account():
-        if BINANCE_API_KEY: return obtener_cuenta_ccxt()
+        if not LIVE_ENABLED:
+            return None
+        if IS_ALPACA:
+            return obtener_cuenta()
+        return obtener_cuenta_ccxt()
         return None
 
     def get_positions():
-        if BINANCE_API_KEY: return obtener_posiciones_abiertas_ccxt()
+        if not LIVE_ENABLED:
+            return []
+        if IS_ALPACA:
+            return obtener_posiciones_abiertas()
+        return obtener_posiciones_abiertas_ccxt()
         return []
 
     def place_order(symbol, qty, side, tp=None, sl=None):
-        if BINANCE_API_KEY: return colocar_orden_mercado_ccxt(symbol, qty, side)
+        if not LIVE_ENABLED:
+            return None
+        if IS_ALPACA:
+            return colocar_orden_mercado(symbol, qty, side, tp, sl)
+        return colocar_orden_mercado_ccxt(symbol, qty, side)
         return None
 
-    logger.info("✅ Módulos internos (Binance) listos.")
+    def cancel_all_orders():
+        if not LIVE_ENABLED:
+            return False
+        if IS_ALPACA:
+            return cancelar_todas_las_ordenes()
+        return cancelar_todas_las_ordenes_ccxt()
+
+    active_name = 'ALPACA' if IS_ALPACA else CCXT_EXCHANGE_ID.upper()
+    logger.info(f"✅ Módulos internos ({active_name}) listos.")
 except Exception:
     logger.error(f"⚠️ Error cargando módulos:\n{traceback.format_exc()}")
-    WATCHLIST = ['BTC/USDT']; CAPITAL_INICIAL = 10000.0; BINANCE_API_KEY = None
+    WATCHLIST = ['BTC/USD']; CAPITAL_INICIAL = 10000.0
+    PROVIDER = 'ALPACA'; IS_ALPACA = True; LIVE_ENABLED = False
+    CCXT_EXCHANGE_ID = 'coinbase'
 
 app = Flask(__name__)
 CORS(app)
@@ -66,7 +107,7 @@ def safe_float(val, ndigits=2):
         return round(float(val), ndigits)
     except: return 0.0
 
-# --- LOOP TRADING BINANCE ---
+# --- LOOP TRADING (ALPACA/CCXT) ---
 def trading_loop():
     global AUTO_TRADING_ACTIVE, BOT_HISTORY
     while True:
@@ -75,7 +116,7 @@ def trading_loop():
             buying_power = real_equity
             positions_list = []
             
-            if BINANCE_API_KEY:
+            if LIVE_ENABLED:
                 acc = get_account()
                 if acc:
                     real_equity = float(acc.get('nav', real_equity))
@@ -100,13 +141,14 @@ def trading_loop():
                     norm_sym = symbol.replace('/', '').upper()
                     current_pos = next((p for p in positions_list if p['instrumento'].replace('/', '').upper() == norm_sym), None)
 
-                    if BINANCE_API_KEY:
+                    if LIVE_ENABLED:
                         if current_pos:
                             is_long = current_pos['direccion'] == 'LONG'
                             should_close = (dir_ == 'NEUTRAL') or (is_long and dir_ == 'SHORT') or (not is_long and dir_ == 'LONG')
                             
                             if should_close:
-                                logger.info(f"🛑 CERRANDO {symbol}")
+                                market_name = 'ALPACA' if IS_ALPACA else CCXT_EXCHANGE_ID.upper()
+                                logger.info(f"🛑 CERRANDO {symbol} en {market_name}")
                                 side_close = 'sell' if is_long else 'buy'
                                 place_order(symbol, current_pos['unidades'], side_close)
                                 BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M'), 'sym': symbol, 'type': f"CLOSE", 'price': safe_float(datos['close'].iloc[-1]), 'reason': f"Señal {dir_}"})
@@ -125,12 +167,14 @@ def trading_loop():
                             qty = round(raw_qty, 4)
                             if qty > 0:
                                 try:
-                                    logger.info(f"🚀 ABRIENDO: {symbol} x{qty} {side.upper()}")
+                                    market_name = 'ALPACA' if IS_ALPACA else CCXT_EXCHANGE_ID.upper()
+                                    logger.info(f"🚀 ABRIENDO: {symbol} x{qty} {side.upper()} en {market_name}")
                                     place_order(symbol, qty, side)
                                     BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M'), 'sym': symbol, 'type': f"OPEN {dir_}", 'price': safe_float(price), 'reason': 'Ejecutado'})
                                     buying_power -= (qty * price)
                                 except Exception as e_order:
-                                    logger.error(f"❌ Error Binance {symbol}: {e_order}")
+                                    market_name = 'ALPACA' if IS_ALPACA else CCXT_EXCHANGE_ID.upper()
+                                    logger.error(f"❌ Error {market_name} {symbol}: {e_order}")
                     
                     elif dir_ != 'NEUTRAL':
                         BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M'), 'sym': symbol, 'type': f"SIM {dir_}", 'price': safe_float(datos['close'].iloc[-1]), 'reason': dec['razon']})
@@ -155,9 +199,9 @@ def toggle():
 @app.route('/api/summary')
 def summary():
     try:
-        is_binance = bool(os.getenv('BINANCE_API_KEY'))
+        active_mode = 'ALPACA' if IS_ALPACA else CCXT_EXCHANGE_ID.upper()
         data = {
-            'mode': 'BINANCE' if is_binance else 'SIM', 
+            'mode': active_mode if LIVE_ENABLED else 'SIM', 
             'auto': AUTO_TRADING_ACTIVE, 
             'summary': LAST_RUN_LOG, 
             'history': BOT_HISTORY, 
@@ -167,7 +211,7 @@ def summary():
             'pos': [],
             'orders': []
         }
-        if is_binance:
+        if LIVE_ENABLED:
             acc = get_account()
             if acc:
                 data['equity'] = safe_float(acc.get('nav', 0))
@@ -184,9 +228,9 @@ def summary():
 @app.route('/api/cancel_all', methods=['POST'])
 def cancel_all():
     global BOT_HISTORY
-    if bool(os.getenv('BINANCE_API_KEY')):
+    if LIVE_ENABLED:
         try:
-            cancelar_todas_las_ordenes_ccxt()
+            cancel_all_orders()
             BOT_HISTORY.insert(0, {'time': datetime.datetime.now().strftime('%H:%M'), 'sym': 'ALL', 'type': 'CANCEL', 'price': 0, 'reason': 'Manual cancel'})
             return jsonify({'ok': True})
         except: pass

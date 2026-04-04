@@ -13,7 +13,12 @@ import requests, json
 def obtener_datos_alpaca(symbol: str = 'AAPL', limit: int = 300):
     key    = os.getenv('ALPACA_API_KEY')
     secret = os.getenv('ALPACA_SECRET_KEY')
-    base   = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
+    paper = os.getenv('ALPACA_PAPER', 'True').lower() == 'true'
+    base = os.getenv('ALPACA_BASE_URL')
+    if not base:
+        base = 'https://paper-api.alpaca.markets' if paper else 'https://api.alpaca.markets'
+    elif paper and 'paper-api.alpaca.markets' not in base:
+        base = 'https://paper-api.alpaca.markets'
     api = tradeapi.REST(key, secret, base, api_version='v2')
     
     # Detección

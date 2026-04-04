@@ -18,9 +18,18 @@ CAPITAL_INICIAL = 10_000.0       # Capital inicial en USD
 RIESGO_POR_OPERACION = 0.02      # Máximo 2% del capital por operación
 
 # --- Modo de Trading ---
-# 'ALPACA' para Acciones, 'BINANCE' para Cripto (via CCXT)
-TRADING_MODE_CRYPTO = 'BINANCE' 
+# 'ALPACA' para Acciones, 'COINBASE' para Cripto (via CCXT)
+TRADING_MODE_CRYPTO = os.getenv('TRADING_MODE_CRYPTO', 'ALPACA').strip().upper()
 USE_TESTNET = True               # Cambiar a False para cuenta real
+
+# --- Conexión Alpaca ---
+ALPACA_API_KEY = os.getenv('ALPACA_API_KEY', '')
+ALPACA_SECRET_KEY = os.getenv('ALPACA_SECRET_KEY', '')
+ALPACA_PAPER = os.getenv('ALPACA_PAPER', 'True').lower() == 'true'
+ALPACA_BASE_URL = os.getenv(
+    'ALPACA_BASE_URL',
+    'https://paper-api.alpaca.markets' if ALPACA_PAPER else 'https://api.alpaca.markets'
+)
 
 # --- Multiplicadores ATR para Stop Loss y Take Profit ---
 MULTIPLICADOR_ATR_SL = 1.5       # Stop Loss  = entrada ± (ATR × 1.5)
@@ -29,7 +38,7 @@ MULTIPLICADOR_ATR_TP = 3.0       # Take Profit = entrada ± (ATR × 3.0)
 
 # --- Vigilancia (Watchlist) ---
 WATCHLIST = [
-    'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'AVAX/USDT', 'PEPE/USDT' # Cripto (Binance)
+    'BTC/USD', 'ETH/USD', 'SOL/USD', 'AVAX/USD', 'LINK/USD' # Cripto (Coinbase)
 ]
 # Nota: Forex en Alpaca requiere permisos específicos, pero el bot ya lo soporta.
 
@@ -62,7 +71,17 @@ TENDENCIA           = 0.0004     # Tendencia por vela (positivo = alcista)
 VOLATILIDAD         = 0.013      # Volatilidad por vela
 SEMILLA_ALEATORIA   = 99         # Semilla para reproducibilidad
 
-# --- Conexión Binance (CCXT) ---
-BINANCE_API_KEY     = os.getenv('BINANCE_API_KEY', '')
-BINANCE_SECRET_KEY  = os.getenv('BINANCE_SECRET_KEY', '')
-BINANCE_TESTNET     = os.getenv('BINANCE_TESTNET', 'True').lower() == 'true'
+# --- Conexión Exchange (CCXT) ---
+# Puedes cambiar el exchange sin tocar código, por ejemplo:
+# CCXT_EXCHANGE_ID=coinbase | kucoin | kraken | bybit
+CCXT_EXCHANGE_ID = os.getenv('CCXT_EXCHANGE_ID', 'coinbase').strip().lower()
+
+# Variables genéricas con fallback a nombres legacy de Coinbase.
+CCXT_API_KEY = os.getenv('CCXT_API_KEY', os.getenv('COINBASE_API_KEY', ''))
+CCXT_SECRET_KEY = os.getenv('CCXT_SECRET_KEY', os.getenv('COINBASE_SECRET_KEY', ''))
+CCXT_TESTNET = os.getenv('CCXT_TESTNET', os.getenv('COINBASE_TESTNET', 'True')).lower() == 'true'
+
+# Alias legacy para no romper imports existentes.
+COINBASE_API_KEY = CCXT_API_KEY
+COINBASE_SECRET_KEY = CCXT_SECRET_KEY
+COINBASE_TESTNET = CCXT_TESTNET
