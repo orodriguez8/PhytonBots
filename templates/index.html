@@ -1,131 +1,217 @@
-<!-- VERSION: 2.0.2 - REPARADO POR ANTIGRAVITY -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mera Victorino - Trading Bot</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <title>Mera Victorino — Pro Dashboard</title>
+    <meta name="description" content="Real-time algorithmic trading dashboard with WebSocket data streaming, latency monitoring and portfolio analytics.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <div class="container">
-        <!-- Sidebar: Global Info & Control -->
-        <aside class="sidebar glass">
-            <div class="logo"><h1>Mera Victorino</h1></div>
-            
-            <div id="statusLabel" class="glass active" style="padding:0.75rem; border-radius:12px; font-size:0.8rem; border:1px solid rgba(255,255,255,0.1); margin-bottom:1rem">
-                <span id="statusMode">Connecting...</span>
+    <div class="app-wrapper">
+        <!-- ═══ Top Bar ═══════════════════════════════════════════ -->
+        <header class="topbar" id="topbar">
+            <div class="topbar-left">
+                <span class="logo-text">Mera Victorino</span>
+                <span class="logo-version" id="modeLabel">v3.0</span>
             </div>
+            <div class="topbar-right">
+                <div class="latency-badge good" id="latencyBadge">
+                    <span class="latency-dot"></span>
+                    <span id="latencyValue">— ms</span>
+                </div>
+                <div class="conn-status connected" id="connStatus">
+                    <i data-lucide="wifi" style="width:12px;height:12px"></i>
+                    <span id="connLabel">Connecting</span>
+                </div>
+            </div>
+        </header>
 
-            <div class="stat-card">
-                <span>Account Equity</span>
-                <h2 id="equity">$0.00</h2>
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <b id="plTotal" class="up">+$0.00</b>
-                    <span style="font-size:0.65rem; color:var(--dim); font-weight:700;">BP: <span id="bp" style="color:#fff">$0.00</span></span>
+        <!-- ═══ Sidebar ═══════════════════════════════════════════ -->
+        <aside class="sidebar" id="sidebar">
+            <!-- Account -->
+            <div class="sidebar-section">
+                <div class="stat-card" style="position:relative">
+                    <span class="stat-label">Account Equity</span>
+                    <span class="stat-value" id="equity">$0.00</span>
+                    <div class="stat-sub">
+                        <span id="plTotal" class="up">+$0.00</span>
+                    </div>
+                    <canvas id="equitySpark" class="stat-sparkline" width="80" height="30"></canvas>
+                </div>
+                <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+                    <div class="stat-card" style="flex:1">
+                        <span class="stat-label">Buying Power</span>
+                        <span class="stat-value" id="bp" style="font-size:1rem">$0.00</span>
+                    </div>
+                    <div class="stat-card" style="flex:1">
+                        <span class="stat-label">Day P/L</span>
+                        <span class="stat-value" id="dayPl" style="font-size:1rem">$0.00</span>
+                        <canvas id="plSpark" class="stat-sparkline" width="60" height="24"></canvas>
+                    </div>
                 </div>
             </div>
 
-            <button id="toggleBtn" class="btn btn-off" onclick="toggle()" style="margin-top:1rem">
-                <i data-lucide="play"></i> START BOT
-            </button>
-
-            <div class="watchlist-section" style="margin-top:1.5rem">
-                <span style="font-size:0.7rem; color:var(--dim); font-weight:700; display:block; margin-bottom:0.5rem">WATCHLIST</span>
-                <div id="watch" class="watchlist"></div>
+            <!-- Bot Control -->
+            <div class="sidebar-section">
+                <button id="toggleBtn" class="btn-toggle btn-off" onclick="toggleBot()">
+                    <i data-lucide="play" style="width:16px;height:16px"></i>
+                    <span>Start Bot</span>
+                </button>
             </div>
 
-            <div class="history-section" style="flex:1; overflow:hidden; display:flex; flex-direction:column; margin-top:1.5rem">
-                <span style="font-size:0.7rem; color:var(--dim); font-weight:700; display:block; margin-bottom:0.5rem">RECURRING ACTIVITY</span>
-                <div id="history" class="hist-list"></div>
+            <!-- Watchlist -->
+            <div class="sidebar-section">
+                <div class="sidebar-label">
+                    <i data-lucide="eye" style="width:11px;height:11px"></i> Watchlist
+                </div>
+                <div class="watchlist" id="watchlist"></div>
+            </div>
+
+            <!-- Activity History -->
+            <div class="sidebar-section" style="flex:1;overflow:hidden;display:flex;flex-direction:column">
+                <div class="sidebar-label">
+                    <i data-lucide="activity" style="width:11px;height:11px"></i> Recent Activity
+                </div>
+                <div class="hist-list" id="historyList"></div>
             </div>
         </aside>
 
-        <!-- Main Content -->
-        <main class="main-grid">
-            <div class="glass" style="padding:1.5rem">
-                <h3 style="display:flex; align-items:center; gap:0.5rem; font-size:1rem; margin-bottom:1rem">
-                    <i data-lucide="briefcase" size="18"></i> OPEN POSITIONS
-                </h3>
-                <div class="table-wrapper">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Symbol</th>
-                                <th>Type</th>
-                                <th>Qty</th>
-                                <th>Entry</th>
-                                <th>Current</th>
-                                <th>P/L Total</th>
-                            </tr>
-                        </thead>
-                        <tbody id="posTable">
-                            <tr><td colspan="6" style="text-align:center; padding:2rem 0; color:var(--dim)">Loading...</td></tr>
-                        </tbody>
-                    </table>
+        <!-- ═══ Main Content ══════════════════════════════════════ -->
+        <main class="main-content" id="mainContent">
+            <!-- Stats Row -->
+            <div class="stats-row" id="statsRow">
+                <div class="stat-card">
+                    <span class="stat-label">Open Positions</span>
+                    <span class="stat-value" id="posCount">0</span>
                 </div>
-
-                <!-- Desktop table exists, mobile cards needed for app.js sync -->
-                <div id="posCards" class="pos-cards-mobile" style="display:none"></div>
+                <div class="stat-card">
+                    <span class="stat-label">Open P/L</span>
+                    <span class="stat-value" id="openPl" style="font-size:1.2rem">$0.00</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Pending Orders</span>
+                    <span class="stat-value" id="orderCount">0</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Provider</span>
+                    <span class="stat-value" id="providerLabel" style="font-size:1rem">—</span>
+                </div>
             </div>
 
-            <!-- CLOSED POSITIONS -->
-            <div class="glass" style="margin-top:1.5rem; padding:1.5rem">
-                <h3 style="display:flex; align-items:center; gap:0.5rem; font-size:1rem; margin-bottom:1rem">
-                    <i data-lucide="check-circle" size="18"></i> CLOSED POSITIONS
-                </h3>
-                <div class="table-wrapper">
+            <!-- Open Positions -->
+            <div class="panel" id="panelPositions">
+                <div class="panel-header">
+                    <span class="panel-title">
+                        <i data-lucide="briefcase" style="width:14px;height:14px"></i>
+                        Open Positions
+                    </span>
+                    <span class="panel-badge" id="posBadge">0</span>
+                </div>
+                <div class="table-wrap">
                     <table>
                         <thead>
                             <tr>
                                 <th>Symbol</th>
                                 <th>Side</th>
                                 <th>Qty</th>
-                                <th>Price</th>
-                                <th>P/L Realized</th>
-                                <th>Time</th>
+                                <th>Entry</th>
+                                <th>Current</th>
+                                <th>P/L</th>
                             </tr>
                         </thead>
-                        <tbody id="closedTable">
-                            <tr><td colspan="6" style="text-align:center; padding:1rem 0; color:var(--dim)">No closed positions yet</td></tr>
+                        <tbody id="posTable">
+                            <tr><td colspan="6" class="empty-row">No open positions</td></tr>
                         </tbody>
                     </table>
                 </div>
+                <div id="posCards" class="pos-cards-mobile"></div>
             </div>
 
-            <!-- PENDING ORDERS (Collapsible + Searchable) -->
-            <div class="glass" style="margin-top:1.5rem; padding:1.5rem">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem">
-                    <h3 style="display:flex; align-items:center; gap:0.5rem; font-size:1rem; margin:0">
-                        <i data-lucide="clock" size="18"></i> PENDING ORDERS
-                    </h3>
-                    <div style="display:flex; gap:0.5rem; align-items:center;">
-                        <input type="text" id="orderSearch" onkeyup="filterOrders()" placeholder="Search symbol..." style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:6px; padding:4px 8px; font-size:0.75rem">
-                        <button onclick="cancelAllOrders()" style="background:rgba(255, 68, 68, 0.1); border:1px solid rgba(255, 68, 68, 0.2); color:#ff4444; border-radius:6px; padding:4px 8px; font-size:0.65rem; cursor:pointer; font-weight:700">CANCEL ALL</button>
-                        <button onclick="toggleOrders()" style="background:none; border:none; color:var(--dim); cursor:pointer;"><i data-lucide="chevron-down" id="orderChevron"></i></button>
+            <!-- Closed Positions -->
+            <div class="panel" id="panelClosed">
+                <div class="panel-header">
+                    <span class="panel-title">
+                        <i data-lucide="check-circle-2" style="width:14px;height:14px"></i>
+                        Closed Positions
+                    </span>
+                    <button class="collapse-btn" onclick="togglePanel('closedBody', this)">
+                        <i data-lucide="chevron-down" style="width:14px;height:14px"></i>
+                    </button>
+                </div>
+                <div id="closedBody" class="collapsible" style="max-height:400px">
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Side</th>
+                                    <th>Qty</th>
+                                    <th>Price</th>
+                                    <th>P/L Realized</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody id="closedTable">
+                                <tr><td colspan="6" class="empty-row">No closed positions yet</td></tr>
+                            </tbody>
+                        </table>
                     </div>
-
-                </div>
-                <div id="ordersContainer">
-                    <div id="pendingOrders" class="orders-list"></div>
                 </div>
             </div>
 
+            <!-- Pending Orders -->
+            <div class="panel" id="panelOrders">
+                <div class="panel-header">
+                    <span class="panel-title">
+                        <i data-lucide="clock" style="width:14px;height:14px"></i>
+                        Pending Orders
+                    </span>
+                    <div style="display:flex;gap:0.4rem;align-items:center">
+                        <input type="text" id="orderSearch" onkeyup="filterOrders()" placeholder="Filter..."
+                               class="search-input">
+                        <button onclick="cancelAllOrders()" class="btn-sm btn-danger">Cancel All</button>
+                        <button class="collapse-btn" onclick="togglePanel('ordersBody', this)">
+                            <i data-lucide="chevron-down" style="width:14px;height:14px"></i>
+                        </button>
+                    </div>
+                </div>
+                <div id="ordersBody" class="collapsible" style="max-height:300px">
+                    <div id="pendingOrders"></div>
+                </div>
+            </div>
 
-            <!-- MARKET INSIGHTS -->
-            <div class="glass" style="margin-top:1.5rem; padding:1.5rem">
-                 <h3 style="display:flex; align-items:center; gap:0.5rem; font-size:1rem; margin-bottom:1rem">
-                    <i data-lucide="line-chart" size="18"></i> MARKET INSIGHTS
-                </h3>
-                <p id="summary" style="font-size:0.85rem; color:var(--dim); line-height:1.6">
-                    Scanning the watchlist using <b>Multi-Confluence Analysis</b>. 
-                    Real-time data from Alpaca/Crypto feed.
-                </p>
+            <!-- Event Console -->
+            <div class="panel" id="panelConsole">
+                <div class="panel-header">
+                    <span class="panel-title">
+                        <i data-lucide="terminal" style="width:14px;height:14px"></i>
+                        Event Console
+                    </span>
+                    <button class="collapse-btn" onclick="togglePanel('consoleWrap', this)">
+                        <i data-lucide="chevron-down" style="width:14px;height:14px"></i>
+                    </button>
+                </div>
+                <div id="consoleWrap" class="collapsible" style="max-height:300px">
+                    <div class="console-wrap">
+                        <div class="console-toolbar">
+                            <button class="console-filter active" data-filter="all" onclick="setConsoleFilter('all', this)">All</button>
+                            <button class="console-filter" data-filter="order" onclick="setConsoleFilter('order', this)">Orders</button>
+                            <button class="console-filter" data-filter="error" onclick="setConsoleFilter('error', this)">Errors</button>
+                            <button class="console-filter" data-filter="info" onclick="setConsoleFilter('info', this)">Info</button>
+                        </div>
+                        <div class="console-body" id="consoleBody"></div>
+                    </div>
+                </div>
             </div>
         </main>
     </div>
+
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     <script>lucide.createIcons();</script>
 </body>

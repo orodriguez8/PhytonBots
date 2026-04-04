@@ -1,5 +1,8 @@
 flask
 flask-cors
+flask-socketio
+gevent
+gevent-websocket
 pandas
 numpy
 python-dotenv

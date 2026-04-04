@@ -1,15 +1,17 @@
-# Usamos una imagen de Python oficial y ligera
+# Mera Victorino Pro v3.0 — Lightweight Docker Image
 FROM python:3.9-slim
 
-# Creamos un directorio de trabajo dentro del servidor
 WORKDIR /code
 
-# Copiamos el archivo de librerías primero para instalar todo
+# Install dependencies first (cached layer)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiamos el resto de los archivos (tu app.py, carpetas templates, etc.)
+# Copy application
 COPY . .
 
-# Comando para arrancar tu app en el puerto 7860
+# Expose WebSocket-capable port
+EXPOSE 7860
+
+# Start with Python directly (socketio.run handles serving)
 CMD ["python", "app.py"]
