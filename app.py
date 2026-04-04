@@ -297,7 +297,7 @@ def trading_loop():
                                 side_close = 'sell' if is_long else 'buy'
                                 place_order(symbol, current_pos['unidades'], side_close)
                                 BOT_HISTORY.insert(0, {
-                                    'time': datetime.datetime.now().strftime('%H:%M'),
+                                    'time': datetime.datetime.now().strftime('%d/%m %H:%M'),
                                     'sym': symbol,
                                     'type': 'CLOSE',
                                     'price': safe_float(datos['close'].iloc[-1]),
@@ -323,7 +323,7 @@ def trading_loop():
                                     push_event('order', f"OPENING {symbol} x{qty} {side.upper()} on {market_name}")
                                     place_order(symbol, qty, side)
                                     BOT_HISTORY.insert(0, {
-                                        'time': datetime.datetime.now().strftime('%H:%M'),
+                                        'time': datetime.datetime.now().strftime('%d/%m %H:%M'),
                                         'sym': symbol,
                                         'type': f"OPEN {dir_}",
                                         'price': safe_float(price),
@@ -337,7 +337,7 @@ def trading_loop():
 
                     elif dir_ != 'NEUTRAL':
                         BOT_HISTORY.insert(0, {
-                            'time': datetime.datetime.now().strftime('%H:%M'),
+                            'time': datetime.datetime.now().strftime('%d/%m %H:%M'),
                             'sym': symbol,
                             'type': f"SIM {dir_}",
                             'price': safe_float(datos['close'].iloc[-1]),
@@ -436,7 +436,7 @@ def cancel_all():
         try:
             cancel_all_orders()
             BOT_HISTORY.insert(0, {
-                'time': datetime.datetime.now().strftime('%H:%M'),
+                'time': datetime.datetime.now().strftime('%d/%m %H:%M'),
                 'sym': 'ALL',
                 'type': 'CANCEL',
                 'price': 0,
