@@ -12,3 +12,4 @@ requests
 websocket-client
 urllib3
 ccxt
+pandas-ta

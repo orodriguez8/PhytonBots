@@ -33,6 +33,7 @@ if TOP_DIR not in sys.path:
 # ── Robust Module Import (ALPACA + CCXT) — UNTOUCHED LOGIC ────────────────────
 try:
     from trading_bot.bot.trading_bot import TradingBot
+    from trading_bot.bot.crypto_analyzer import CryptoAnalyzer
     from trading_bot.config import (
         CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS, WATCHLIST,
         TRADING_MODE_CRYPTO,
@@ -258,22 +259,46 @@ def trading_loop():
 
             for symbol in WATCHLIST:
                 try:
-                    datos = get_data(symbol)
-                    if datos is None or datos.empty:
-                        logger.warning(f"⚠️ {symbol}: Sin datos, saltando.")
-                        push_event('warn', f"{symbol}: No data, skipping")
-                        continue
+                    is_crypto = any(q in symbol.upper() for q in ['USD', 'USDT', 'USDC', '/'])
+                    
+                    if is_crypto:
+                        analyzer = CryptoAnalyzer(symbol, real_equity, RIESGO_POR_OPERACION)
+                        analysis_res = analyzer.analyze()
+                        dir_ = analysis_res['signal']
+                        reason = analysis_res['key_reasons'][0] if analysis_res['key_reasons'] else "No trade"
+                        
+                        LAST_RUN_LOG[symbol] = analysis_res
+                        logger.info(f"🔍 ANALYSIS {symbol}: {dir_} (Score: {analysis_res['confidence_score']})")
+                        
+                        # Management data
+                        price = analysis_res['entry_price']
+                        stop_loss = analysis_res['stop_loss']
+                        tp1 = analysis_res['take_profit_1']
+                        pos_size_pct = analysis_res['position_size_pct']
+                        
+                        # In case analyzer returns 0 price (NO_TRADE), fetch current
+                        if price <= 0:
+                            datos = get_data(symbol)
+                            if datos is not None and not datos.empty:
+                                price = float(datos['close'].iloc[-1])
+                    else:
+                        datos = get_data(symbol)
+                        if datos is None or datos.empty:
+                            logger.warning(f"⚠️ {symbol}: Sin datos, saltando.")
+                            push_event('warn', f"{symbol}: No data, skipping")
+                            continue
 
-                    bot = TradingBot(datos, real_equity, 0.01, MIN_CONFLUENCIAS)
-                    bot.ejecutar()
-                    dec = bot.decision
-                    dir_ = dec['direccion']
-
-                    LAST_RUN_LOG[symbol] = {
-                        'time': datetime.datetime.now().strftime('%H:%M:%S'),
-                        'dir': dir_,
-                        'reason': dec['razon'],
-                    }
+                        bot = TradingBot(datos, real_equity, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS)
+                        bot.ejecutar()
+                        dec = bot.decision
+                        dir_ = dec['direccion']
+                        reason = dec['razon']
+                        LAST_RUN_LOG[symbol] = {
+                            'time': datetime.datetime.now().strftime('%H:%M:%S'),
+                            'dir': dir_,
+                            'reason': reason,
+                        }
+                        price = float(datos['close'].iloc[-1])
 
                     norm_sym = symbol.replace('/', '').upper()
                     current_pos = next(
@@ -300,15 +325,23 @@ def trading_loop():
                                     'time': datetime.datetime.now().strftime('%d/%m %H:%M'),
                                     'sym': symbol,
                                     'type': 'CLOSE',
-                                    'price': safe_float(datos['close'].iloc[-1]),
+                                    'price': safe_float(price),
                                     'reason': f"Signal {dir_}",
                                 })
 
-                        elif dir_ != 'NEUTRAL':
-                            side = 'buy' if dir_ == 'LONG' else 'sell'
-                            ges = dec.get('gestion', {})
-                            price = float(datos['close'].iloc[-1])
-                            raw_qty = float(ges.get('tamano_posicion', 0))
+                        elif dir_ == 'LONG': # Only LONG as per user requirement for crypto
+                            side = 'buy'
+                            
+                            if is_crypto:
+                                # Use analyzer's position sizing
+                                raw_qty = (real_equity * (analysis_res['position_size_pct'] / 100)) / price
+                                sl = analysis_res['stop_loss']
+                                tp = analysis_res['take_profit_1']
+                            else:
+                                ges = dec.get('gestion', {})
+                                raw_qty = float(ges.get('tamano_posicion', 0))
+                                sl = ges.get('stop_loss')
+                                tp = ges.get('take_profit')
 
                             # BP cap: max 10% per asset
                             safe_bp_cap = buying_power * 0.10
@@ -319,9 +352,9 @@ def trading_loop():
                             if qty > 0:
                                 try:
                                     market_name = 'ALPACA' if IS_ALPACA else CCXT_EXCHANGE_ID.upper()
-                                    logger.info(f"🚀 ABRIENDO: {symbol} x{qty} {side.upper()} en {market_name}")
+                                    logger.info(f"🚀 ABRIENDO: {symbol} x{qty} {side.upper()} en {market_name} (SL: {sl}, TP: {tp})")
                                     push_event('order', f"OPENING {symbol} x{qty} {side.upper()} on {market_name}")
-                                    place_order(symbol, qty, side)
+                                    place_order(symbol, qty, side, tp=tp, sl=sl)
                                     BOT_HISTORY.insert(0, {
                                         'time': datetime.datetime.now().strftime('%d/%m %H:%M'),
                                         'sym': symbol,

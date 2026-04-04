@@ -15,7 +15,7 @@ load_dotenv()
 
 # --- Capital y Riesgo ---
 CAPITAL_INICIAL = 10_000.0       # Capital inicial en USD
-RIESGO_POR_OPERACION = 0.02      # Máximo 2% del capital por operación
+RIESGO_POR_OPERACION = 0.025      # Máximo 2.5% del capital por operación
 
 # --- Modo de Trading ---
 # 'ALPACA' para Acciones, 'COINBASE' para Cripto (via CCXT)
