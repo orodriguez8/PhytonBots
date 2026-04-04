@@ -10,11 +10,12 @@ if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 load_dotenv()
+from trading_bot.config import ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_BASE_URL
 
 def test_full():
-    key = os.getenv('ALPACA_API_KEY')
-    sec = os.getenv('ALPACA_SECRET_KEY')
-    base = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
+    key = ALPACA_API_KEY
+    sec = ALPACA_SECRET_KEY
+    base = ALPACA_BASE_URL
     
     print(f"Key: {key[:5]}... | Sec: {sec[:5]}...")
     print(f"Base: {base}")

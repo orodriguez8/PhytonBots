@@ -26,10 +26,15 @@ USE_TESTNET = True               # Cambiar a False para cuenta real
 ALPACA_API_KEY = os.getenv('ALPACA_API_KEY', '')
 ALPACA_SECRET_KEY = os.getenv('ALPACA_SECRET_KEY', '')
 ALPACA_PAPER = os.getenv('ALPACA_PAPER', 'True').lower() == 'true'
-ALPACA_BASE_URL = os.getenv(
-    'ALPACA_BASE_URL',
-    'https://paper-api.alpaca.markets' if ALPACA_PAPER else 'https://api.alpaca.markets'
-)
+
+# Limpiar la URL base: el SDK de Alpaca ya añade '/v2' internamente.
+# Si el usuario pone 'https://.../v2', se duplicaría a '.../v2/v2' fallando la conexión.
+_base_env = os.getenv('ALPACA_BASE_URL', '').strip()
+if not _base_env:
+    ALPACA_BASE_URL = 'https://paper-api.alpaca.markets' if ALPACA_PAPER else 'https://api.alpaca.markets'
+else:
+    # Eliminar '/v2' o '/' al final para evitar errores de duplicación
+    ALPACA_BASE_URL = _base_env.rstrip('/').replace('/v2', '')
 
 # --- Multiplicadores ATR para Stop Loss y Take Profit ---
 MULTIPLICADOR_ATR_SL = 1.5       # Stop Loss  = entrada ± (ATR × 1.5)

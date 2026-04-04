@@ -236,5 +236,27 @@ def cancel_all():
         except: pass
     return jsonify({'ok': False, 'error': 'No activo'})
 
+@app.route('/api/test_alpaca')
+def test_alpaca():
+    from trading_bot.config import ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_BASE_URL
+    res = {
+        'key_present': bool(ALPACA_API_KEY),
+        'secret_present': bool(ALPACA_SECRET_KEY),
+        'base_url': ALPACA_BASE_URL,
+        'key_start': ALPACA_API_KEY[:5] if ALPACA_API_KEY else 'N/A',
+        'status': 'UNKNOWN',
+        'error': None
+    }
+    try:
+        from trading_bot.ejecucion.alpaca_orders import _get_api
+        api = _get_api()
+        acc = api.get_account()
+        res['status'] = 'CONNECTED'
+        res['equity'] = float(acc.equity)
+    except Exception as e:
+        res['status'] = 'FAILED'
+        res['error'] = str(e)
+    return jsonify(res)
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=7860)

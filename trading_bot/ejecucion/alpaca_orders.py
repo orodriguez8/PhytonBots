@@ -1,16 +1,10 @@
 import os
 import alpaca_trade_api as tradeapi
 
+from trading_bot.config import ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_BASE_URL
+
 def _get_api():
-    key    = os.getenv('ALPACA_API_KEY')
-    secret = os.getenv('ALPACA_SECRET_KEY')
-    paper = os.getenv('ALPACA_PAPER', 'True').lower() == 'true'
-    base = os.getenv('ALPACA_BASE_URL')
-    if not base:
-        base = 'https://paper-api.alpaca.markets' if paper else 'https://api.alpaca.markets'
-    elif paper and 'paper-api.alpaca.markets' not in base:
-        base = 'https://paper-api.alpaca.markets'
-    return tradeapi.REST(key, secret, base, api_version='v2')
+    return tradeapi.REST(ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_BASE_URL, api_version='v2')
 
 def obtener_cuenta():
     """
