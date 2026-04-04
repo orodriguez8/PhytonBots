@@ -4,7 +4,7 @@ emoji: 📈
 colorFrom: indigo
 colorTo: blue
 sdk: docker
-app_file: app.py
+app_file: main.py
 pinned: false
 ---
 
@@ -31,5 +31,19 @@ Compatibilidad legacy:
 - Si ya tienes variables `COINBASE_API_KEY`, `COINBASE_SECRET_KEY` y `COINBASE_TESTNET`, siguen funcionando.
 
 La aplicación arrancará automáticamente en el puerto 7860 y mostrará el panel premium interactivo.
+
+
+### 📁 Estructura del Proyecto
+- `main.py`: Punto de entrada unificado (inicia Flask, SocketIO y Trading Loop).
+- `src/api/`: Servidor Flask y eventos WebSocket.
+- `src/bot/`: Motor de trading y analizadores técnicos.
+- `src/core/`: Configuración centralizada y logger.
+- `src/data/`: Proveedores de datos (Alpaca, CCXT).
+- `src/execution/`: Gestión de órdenes y clientes de broker.
+- `src/strategies/`: Indicadores, patrones y estrategias.
+- `src/risk/`: Gestión de riesgo y tamaño de posición.
+- `web/`: Frontend (plantillas HTML y archivos estáticos).
+- `tests/`: Scripts de prueba y diagnóstico.
+- `scripts/`: Utilidades y archivos legacy.
 
 Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference

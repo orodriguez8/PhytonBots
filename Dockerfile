@@ -14,4 +14,4 @@ COPY . .
 EXPOSE 7860
 
 # Start with Python directly (socketio.run handles serving)
-CMD ["python", "app.py"]
+CMD ["python", "main.py"]
