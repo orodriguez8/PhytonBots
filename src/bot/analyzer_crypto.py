@@ -1,7 +1,7 @@
 
 import pandas as pd
 import numpy as np
-import pandas_ta_classic_classic_classic as ta
+import pandas_ta_classic as ta
 import requests
 import logging
 import datetime
