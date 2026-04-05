@@ -262,6 +262,6 @@ def trading_loop(socketio=None):
                     logger.error(f"Error {symbol}: {e}")
                     push_event('error', f"Error processing {symbol}: {e}", socketio)
 
-            time.sleep(60)
+            time.sleep(30)
         else:
             time.sleep(1) # Check toggle state more frequently

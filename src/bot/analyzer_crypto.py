@@ -28,10 +28,10 @@ class CryptoAnalyzer:
 
     def fetch_data(self):
         """Fetches 15min and 1h data from Alpaca."""
-        self.df_15m = obtener_datos_alpaca(self.symbol, limit=500, timeframe='15Min')
+        self.df_2m = obtener_datos_alpaca(self.symbol, limit=500, timeframe='2Min')
         self.df_1h = obtener_datos_alpaca(self.symbol, limit=500, timeframe='1Hour')
         
-        if self.df_15m is None or self.df_1h is None or self.df_15m.empty or self.df_1h.empty:
+        if self.df_2m is None or self.df_1h is None or self.df_2m.empty or self.df_1h.empty:
             return False
         return True
 
@@ -79,8 +79,8 @@ class CryptoAnalyzer:
         if not macro_bullish and price_1h < ema200_1h * 0.99: # Strict filter
              return self._no_trade_response("Macro trend is bearish (Price < EMA 200 1h)")
 
-        # --- LAYER 2: MOMENTUM & ENTRY (15min) ---
-        df = self.df_15m
+        # --- LAYER 2: MOMENTUM & ENTRY (2min) ---
+        df = self.df_2m
         df.ta.ema(length=9, append=True)
         df.ta.ema(length=21, append=True)
         df.ta.ema(length=50, append=True)
@@ -179,7 +179,7 @@ class CryptoAnalyzer:
 
         # --- SAFETY FILTERS ---
         if fng > 80: return self._no_trade_response("Fear & Greed Index > 80 (Too Greedy)")
-        if last['RSI_14'] > 75: return self._no_trade_response("RSI 15m Overbought (>75)")
+        if last['RSI_14'] > 75: return self._no_trade_response("RSI 2m Overbought (>75)")
         if last_1h['RSI_14'] > 75: return self._no_trade_response("RSI 1h Overbought (>75)")
         if last['volume'] < last['vol_ema20'] * 0.7: return self._no_trade_response("Low volume (<70% avg)")
         
@@ -230,11 +230,11 @@ class CryptoAnalyzer:
             "take_profit_3": round(tp3, 4),
             "position_size_pct": round(pos_size_pct, 2),
             "risk_reward_ratio": round(rr, 2),
-            "timeframe": "15min",
+            "timeframe": "2min",
             "market_regime": market_regime,
             "key_reasons": reasons,
             "invalidation_conditions": ["Price breaks below EMA 200 (1h)", "RSI div bearish", "Volume drop > 50%"],
-            "hold_duration_estimate": "4h - 12h",
+            "hold_duration_estimate": "30m - 2h",
             "urgency": "immediate" if score >= 85 else "next_candle" if score >= 75 else "monitor"
         }
 
@@ -252,7 +252,7 @@ class CryptoAnalyzer:
             "take_profit_3": 0,
             "position_size_pct": 0,
             "risk_reward_ratio": 0,
-            "timeframe": "15min",
+            "timeframe": "2min",
             "market_regime": "unknown",
             "key_reasons": [reason],
             "invalidation_conditions": [],

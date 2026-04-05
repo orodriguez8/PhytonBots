@@ -43,7 +43,7 @@ MULTIPLICADOR_ATR_TP = 4.0       # Take Profit = entrada ± (ATR × 4.0)
 
 # --- Vigilancia (Watchlist) ---
 WATCHLIST = [
-    'BTC/USD', 'ETH/USD', 'SOL/USD', 'AVAX/USD', 'LINK/USD' # Cripto (Coinbase)
+    'BTC/USD', 'ETH/USD', 'SOL/USD', 'LTC/USD', 'LINK/USD'
 ]
 # Nota: Forex en Alpaca requiere permisos específicos, pero el bot ya lo soporta.
 
