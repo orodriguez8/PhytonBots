@@ -248,7 +248,7 @@ def trading_loop(socketio=None):
                     elif dir_ != 'NEUTRAL':
                         hist_type = f"{dir_}" if LIVE_ENABLED else f"SIM {dir_}"
                         state.BOT_HISTORY.insert(0, {
-                            'time': datetime.datetime.now().strftime('%d/%m %H:%M'),
+                            'time': datetime.datetime.now().isoformat(),
                             'sym': symbol,
                             'type': hist_type,
                             'price': safe_float(price),

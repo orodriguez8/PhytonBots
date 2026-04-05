@@ -320,7 +320,7 @@ function renderClosed(closed) {
       <td class="${(c.pl || 0) >= 0 ? 'up' : 'down'}" style="font-weight:700;font-family:var(--mono)">
         ${c.side === 'SELL' ? ((c.pl || 0) >= 0 ? '+' : '') + '$' + (c.pl || 0).toFixed(2) : '—'}
       </td>
-      <td style="color:var(--dim-2)">${c.time}</td>
+      <td style="color:var(--dim-2)">${formatTime(c.time)}</td>
     </tr>
   `).join('');
 }
@@ -342,7 +342,7 @@ function renderHistory(history) {
       </div>
       <div style="text-align:right">
         <span class="hist-price">$${h.price}</span>
-        <div class="hist-meta">${h.time}</div>
+        <div class="hist-meta">${formatTime(h.time)}</div>
       </div>
     </div>
   `).join('');
@@ -364,7 +364,7 @@ function renderOrders(orders) {
   el.innerHTML = filtered.map(o => `
     <div class="order-item">
       <span><span class="badge ${o.side === 'buy' ? 'up' : 'down'}">${o.side.toUpperCase()}</span> <b>${o.symbol}</b> ×${o.qty}</span>
-      <span style="color:var(--dim-2);font-size:0.65rem">${o.status} — ${o.created_at}</span>
+      <span style="color:var(--dim-2);font-size:0.65rem">${o.status} — ${formatTime(o.created_at)}</span>
     </div>
   `).join('');
 }
@@ -493,6 +493,15 @@ function togglePanel(bodyId, btn) {
 // ── Utility ───────────────────────────────────────────────
 function formatNum(n) {
   return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatTime(s) {
+  if (!s) return '—';
+  try {
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return s;
+    return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+  } catch (e) { return s; }
 }
 
 // ═══ Bootstrap ════════════════════════════════════════════

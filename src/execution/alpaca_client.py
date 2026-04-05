@@ -93,12 +93,12 @@ def obtener_posiciones_cerradas():
                     'p': price,
                     'entry': entry,
                     'pl': round(pl, 2),
-                    'time': f.transaction_time.strftime('%d/%m %H:%M')
+                    'time': f.transaction_time.isoformat()
                 })
         
         # Si no hay ventas emparejadas, mostrar rellenos sueltos
         if not res:
-            return [{ 's': f.symbol, 'side': f.side.upper(), 'q': float(f.qty), 'p': float(f.price), 'pl': 0, 'time': f.transaction_time.strftime('%d/%m %H:%M') } for f in fills[:10]]
+            return [{ 's': f.symbol, 'side': f.side.upper(), 'q': float(f.qty), 'p': float(f.price), 'pl': 0, 'time': f.transaction_time.isoformat() } for f in fills[:10]]
             
         return res[:10]
     except Exception as e:
@@ -119,7 +119,7 @@ def obtener_ordenes_activas():
             'side': o.side,
             'type': o.type,
             'status': o.status,
-            'created_at': o.created_at.strftime('%d/%m %H:%M')
+            'created_at': o.created_at.isoformat()
         } for o in orders]
     except Exception as e:
         print(f"Error en obtener_ordenes: {e}")
