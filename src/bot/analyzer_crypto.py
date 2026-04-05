@@ -6,16 +6,17 @@ import requests
 import logging
 import datetime
 from src.data.alpaca import obtener_datos_alpaca
+from src.strategies.patterns.velas import detectar_patron
 
 logger = logging.getLogger(__name__)
 
 class CryptoAnalyzer:
     """
     Expert Quantitative Technical Analysis Bot for Crypto (LONG positions only).
-    Profile: CONSERVATIVE (Score >= 80, Risk 2.5%)
+    Profile: CONSERVATIVE (Score >= 80, Risk 2.0%)
     """
 
-    def __init__(self, symbol='BTC/USD', capital=10000.0, risk_per_trade=0.025):
+    def __init__(self, symbol='BTC/USD', capital=10000.0, risk_per_trade=0.02):
         self.symbol = symbol
         self.capital = capital
         self.risk_per_trade = risk_per_trade
@@ -64,15 +65,18 @@ class CryptoAnalyzer:
         prev_1h = self.df_1h.iloc[-2]
         
         price_1h = last_1h['close']
-        ema200_1h = last_1h['EMA_200']
+        ema200_1h = last_1h.get('EMA_200')
         
+        if ema200_1h is None:
+             return self._no_trade_response("Indicator EMA 200 (1h) still calculating...")
+
         # Structure HH/HL check (simplified)
         recent_lows = self.df_1h['low'].tail(20).rolling(window=5).min()
         recent_highs = self.df_1h['high'].tail(20).rolling(window=5).max()
         uptrend_structure = last_1h['close'] > prev_1h['close'] # Basic check
 
         macro_bullish = price_1h > ema200_1h
-        if not macro_bullish and price_1h < ema200_1h * 0.98: # Strict filter
+        if not macro_bullish and price_1h < ema200_1h * 0.99: # Strict filter
              return self._no_trade_response("Macro trend is bearish (Price < EMA 200 1h)")
 
         # --- LAYER 2: MOMENTUM & ENTRY (15min) ---
@@ -103,11 +107,15 @@ class CryptoAnalyzer:
 
         # 1. Trend Confirmation (30 pts)
         trend_pts = 0
-        if last['close'] > last['EMA_200']: trend_pts += 10
-        if last['EMA_9'] > last['EMA_21'] > last['EMA_50']: trend_pts += 10
-        if last['close'] > last['EMA_50']: trend_pts += 10
+        if 'EMA_200' in last and last['close'] > last['EMA_200']: trend_pts += 10
+        if 'EMA_9' in last and 'EMA_21' in last and 'EMA_50' in last:
+            if last['EMA_9'] > last['EMA_21'] > last['EMA_50']: trend_pts += 10
+        if 'EMA_50' in last and last['close'] > last['EMA_50']: trend_pts += 5
+        if 'EMA_50' in last and 'EMA_200' in last and last['EMA_50'] > last['EMA_200']: trend_pts += 5 # Alignment
+        
         score += trend_pts
-        if trend_pts >= 20: reasons.append("Strong bullish EMA alignment")
+        if trend_pts >= 30: reasons.append("Perfect Bullish Trend Alignment (Price > EMA 50/200 1h & 15m)")
+        elif trend_pts >= 20: reasons.append("Strong bullish EMA alignment")
 
         # 2. Momentum (25 pts)
         mom_pts = 0
@@ -144,20 +152,20 @@ class CryptoAnalyzer:
 
         # 4. Patterns & Divergences (15 pts)
         pat_pts = 0
+        
+        # Advanced patterns from velas.py
+        p_name = detectar_patron(df)
+        if "Alcista" in p_name or "Martillo" in p_name:
+            pat_pts += 15
+            reasons.append(f"Pattern detected: {p_name}")
+        elif "Doji" in p_name:
+            pat_pts += 5
+            reasons.append(f"Indecision: {p_name}")
+
         # RSI Divergence (Very basic: price lower low, RSI higher low over 10 bars)
         if last['close'] < prev['close'] and last['RSI_14'] > prev['RSI_14'] and last['RSI_14'] < 40:
             pat_pts += 10
-            reasons.append("Potential Bullish Divergence (RSI)")
-            
-        # Candlesticks
-        body = abs(last['close'] - last['open'])
-        wick_low = min(last['open'], last['close']) - last['low']
-        if wick_low > body * 2: # Hammer-like
-            pat_pts += 10
-            reasons.append("Bullish Hammer detected")
-        elif last['close'] > prev['open'] and prev['close'] < prev['open'] and (last['close'] - last['open']) > (prev['open'] - prev['close']):
-            pat_pts += 10
-            reasons.append("Bullish Engulfing detected")
+            if "Pattern detected" not in str(reasons): reasons.append("Potential Bullish Divergence (RSI)")
         
         score += min(pat_pts, 15)
 
@@ -192,7 +200,8 @@ class CryptoAnalyzer:
         # Position Management
         entry_price = float(last['close'])
         atr = float(last['ATRr_14'])
-        stop_loss = entry_price - (1.5 * atr)
+        # More conservative stop loss: 2.0 * ATR
+        stop_loss = entry_price - (2.0 * atr)
         
         # Targets based on R:R 2:1, 3:1, 5:1
         tp1 = entry_price + (2 * (entry_price - stop_loss))
@@ -201,7 +210,7 @@ class CryptoAnalyzer:
         
         rr = (tp1 - entry_price) / (entry_price - stop_loss) if (entry_price - stop_loss) != 0 else 0
         
-        # Position sizing: Risk 2.5% of capital on SL
+        # Position sizing: 2.0% of capital on SL
         risk_amount = self.capital * self.risk_per_trade
         sl_distance = entry_price - stop_loss
         if sl_distance > 0:

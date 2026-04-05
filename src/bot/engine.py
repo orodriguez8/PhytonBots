@@ -186,8 +186,10 @@ def trading_loop(socketio=None):
                     if LIVE_ENABLED:
                         if current_pos:
                             is_long = current_pos['direccion'] == 'LONG'
+                            # Conservative exit: close if trend reverses or signal is weak/neutral
+                            # Crypto bot uses 'NO_TRADE', Stock bot uses 'NEUTRAL'
                             should_close = (
-                                (dir_ == 'NEUTRAL')
+                                (dir_ in ['NEUTRAL', 'NO_TRADE'])
                                 or (is_long and dir_ == 'SHORT')
                                 or (not is_long and dir_ == 'LONG')
                             )

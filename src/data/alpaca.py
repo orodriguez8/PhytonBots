@@ -22,6 +22,18 @@ def obtener_datos_alpaca(symbol: str = 'BTC/USD', limit: int = 300, timeframe: s
     # Normalize symbol
     is_crypto = any(q in symbol.upper() for q in ['USD', 'USDT', 'USDC', '/'])
     
+    # Calculate start time to ensure we have enough bars for indicators (e.g. EMA 200)
+    # 500 bars 15Min ~= 5.2 days, 1Hour ~= 21 days.
+    now = datetime.datetime.now(datetime.timezone.utc)
+    if timeframe == '1Day':
+        start_time = (now - datetime.timedelta(days=limit + 30)).isoformat()
+    elif timeframe == '1Hour':
+        start_time = (now - datetime.timedelta(days=(limit // 24) + 7)).isoformat()
+    elif timeframe == '15Min':
+        start_time = (now - datetime.timedelta(days=(limit // 96) + 3)).isoformat()
+    else:
+        start_time = (now - datetime.timedelta(days=limit)).isoformat()
+
     try:
         if not is_crypto:
             api = tradeapi.REST(key, secret, base, api_version='v2')
@@ -35,7 +47,7 @@ def obtener_datos_alpaca(symbol: str = 'BTC/USD', limit: int = 300, timeframe: s
             bars = api.get_bars(
                 symbol, 
                 tf_map.get(timeframe, TimeFrame.Hour), 
-                start=(datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)).isoformat(), 
+                start=start_time, 
                 limit=limit, 
                 feed='iex'
             ).df
@@ -49,7 +61,8 @@ def obtener_datos_alpaca(symbol: str = 'BTC/USD', limit: int = 300, timeframe: s
             params = {
                 "symbols": fetch_sym,
                 "timeframe": timeframe, # Alpaca accepts "15Min", "1Hour"...
-                "limit": limit
+                "limit": limit,
+                "start": start_time
             }
             headers = {
                 "APCA-API-KEY-ID": key,

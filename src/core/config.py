@@ -15,7 +15,7 @@ load_dotenv()
 
 # --- Capital y Riesgo ---
 CAPITAL_INICIAL = 10_000.0       # Capital inicial en USD
-RIESGO_POR_OPERACION = 0.025      # Máximo 2.5% del capital por operación
+RIESGO_POR_OPERACION = 0.015      # Máximo 1.5% del capital por operación (Conservative)
 
 # --- Modo de Trading ---
 # 'ALPACA' para Acciones, 'COINBASE' para Cripto (via CCXT)
@@ -37,8 +37,8 @@ else:
     ALPACA_BASE_URL = _base_env.rstrip('/').replace('/v2', '')
 
 # --- Multiplicadores ATR para Stop Loss y Take Profit ---
-MULTIPLICADOR_ATR_SL = 1.5       # Stop Loss  = entrada ± (ATR × 1.5)
-MULTIPLICADOR_ATR_TP = 3.0       # Take Profit = entrada ± (ATR × 3.0)
+MULTIPLICADOR_ATR_SL = 2.0       # Stop Loss  = entrada ± (ATR × 2.0)
+MULTIPLICADOR_ATR_TP = 4.0       # Take Profit = entrada ± (ATR × 4.0)
 # → Esto da un ratio Riesgo:Beneficio de 1:2
 
 # --- Vigilancia (Watchlist) ---
@@ -48,7 +48,7 @@ WATCHLIST = [
 # Nota: Forex en Alpaca requiere permisos específicos, pero el bot ya lo soporta.
 
 # --- Umbral de Confluencias ---
-MIN_CONFLUENCIAS = 3             # Mínimo de señales alineadas para operar
+MIN_CONFLUENCIAS = 4             # Mínimo de señales alineadas para operar
 
 # --- Parámetros de Indicadores ---
 PERIODO_EMA_RAPIDA  = 20         # EMA rápida (corto plazo)
