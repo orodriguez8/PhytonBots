@@ -202,7 +202,7 @@ def trading_loop(socketio=None):
                                 side_close = 'sell' if is_long else 'buy'
                                 place_order(symbol, current_pos['unidades'], side_close)
                                 state.BOT_HISTORY.insert(0, {
-                                    'time': datetime.datetime.now().strftime('%d/%m %H:%M'),
+                                    'time': datetime.datetime.now().isoformat(),
                                     'sym': symbol,
                                     'type': 'CLOSE',
                                     'price': safe_float(price),
@@ -233,7 +233,7 @@ def trading_loop(socketio=None):
                                     push_event('order', f"OPENING {symbol} x{qty} {side.upper()} on {market_name}", socketio)
                                     place_order(symbol, qty, side, tp=tp, sl=sl)
                                     state.BOT_HISTORY.insert(0, {
-                                        'time': datetime.datetime.now().strftime('%d/%m %H:%M'),
+                                        'time': datetime.datetime.now().isoformat(),
                                         'sym': symbol,
                                         'type': f"OPEN {dir_}",
                                         'price': safe_float(price),
@@ -245,7 +245,9 @@ def trading_loop(socketio=None):
                                     logger.error(f"❌ Error {market_name} {symbol}: {e_order}")
                                     push_event('error', f"Order failed {symbol}: {e_order}", socketio)
 
-                    elif dir_ != 'NEUTRAL':
+                    # History Logging (record the scan result if no order was just placed)
+                    # We check if the last item is already this symbol/time to avoid duplicates
+                    if dir_ != 'NEUTRAL':
                         hist_type = f"{dir_}" if LIVE_ENABLED else f"SIM {dir_}"
                         state.BOT_HISTORY.insert(0, {
                             'time': datetime.datetime.now().isoformat(),
@@ -255,7 +257,7 @@ def trading_loop(socketio=None):
                             'reason': reason,
                         })
 
-                    if len(state.BOT_HISTORY) > 20:
+                    if len(state.BOT_HISTORY) > 100:
                         state.BOT_HISTORY.pop()
 
                 except Exception as e:
