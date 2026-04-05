@@ -247,7 +247,7 @@ function renderWatchlist(summary) {
   }
   el.innerHTML = entries.map(([sym, d]) => {
     const dir = (d.dir || 'Neutral').toUpperCase();
-    const time = d.time || '--:--:--';
+    const time = formatTime(d.time);
     return `
       <div class="watch-item">
         <span class="watch-sym">${sym}</span>

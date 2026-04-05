@@ -152,7 +152,7 @@ def trading_loop(socketio=None):
                         
                         # Normalize for dashboard
                         analysis_res['dir'] = dir_
-                        analysis_res['time'] = datetime.datetime.now().strftime('%H:%M:%S')
+                        analysis_res['time'] = datetime.datetime.now().isoformat()
                         state.LAST_RUN_LOG[symbol] = analysis_res
                         logger.info(f"🔍 ANALYSIS {symbol}: {dir_} (Score: {analysis_res['confidence_score']})")
                         
@@ -174,7 +174,7 @@ def trading_loop(socketio=None):
                         dir_ = dec['direccion']
                         reason = dec['razon']
                         state.LAST_RUN_LOG[symbol] = {
-                            'time': datetime.datetime.now().strftime('%H:%M:%S'),
+                            'time': datetime.datetime.now().isoformat(),
                             'dir': dir_,
                             'reason': reason,
                         }
