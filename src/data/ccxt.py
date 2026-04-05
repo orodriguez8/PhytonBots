@@ -42,13 +42,17 @@ def obtener_datos_ccxt(symbol='BTC/USDC', timeframe='1h', limit=100):
             elif 'USD' in symbol:
                 symbol = symbol.replace('USD', '/USD')
 
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+        exchange = _get_exchange()
         
-        if not ohlcv:
+        try:
+            ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+        except Exception:
             # Reintentar con símbolo estándar si falla (Binance Futures usa BTC/USDT)
             if 'binance' in CCXT_EXCHANGE_ID.lower():
                 symbol = symbol.replace('/USD', '/USDT')
                 ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+            else:
+                raise
 
         df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
