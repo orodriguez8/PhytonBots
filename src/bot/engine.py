@@ -244,10 +244,53 @@ def trading_loop(socketio=None):
                                     market_name = 'ALPACA' if IS_ALPACA else CCXT_EXCHANGE_ID.upper()
                                     logger.error(f"❌ Error {market_name} {symbol}: {e_order}")
                                     push_event('error', f"Order failed {symbol}: {e_order}", socketio)
+                        elif dir_ == 'SHORT':
+                            if IS_ALPACA and is_crypto:
+                                logger.warning(f"⚠️ SHORT ignored for {symbol}: Alpaca does not support crypto shorting.")
+                                push_event('warn', f"Short ignored: {symbol} (Alpaca Crypto)", socketio)
+                                side = None
+                            else:
+                                side = 'sell'
+                                if is_crypto:
+                                    # Crypto branch (CCXT or others that support shorting)
+                                    raw_qty = (real_equity * (analysis_res['position_size_pct'] / 100)) / price
+                                    sl = analysis_res['stop_loss']
+                                    tp = analysis_res['take_profit_1']
+                                else:
+                                    # Stock branch (Alpaca margin accounts)
+                                    ges = dec.get('gestion', {})
+                                    raw_qty = float(ges.get('tamano_posicion', 0))
+                                    sl = ges.get('stop_loss')
+                                    tp = ges.get('take_profit')
+
+                                # BP check for shorting
+                                safe_bp_cap = buying_power * 0.10
+                                if (raw_qty * price) > safe_bp_cap:
+                                    raw_qty = safe_bp_cap / price
+
+                                qty = round(raw_qty, 4)
+                                if qty > 0 and side:
+                                    try:
+                                        market_name = 'ALPACA' if IS_ALPACA else CCXT_EXCHANGE_ID.upper()
+                                        logger.info(f"🚀 ABRIENDO SHORT: {symbol} x{qty} en {market_name} (SL: {sl}, TP: {tp})")
+                                        push_event('order', f"OPENING SHORT {symbol} x{qty} on {market_name}", socketio)
+                                        place_order(symbol, qty, side, tp=tp, sl=sl)
+                                        state.BOT_HISTORY.insert(0, {
+                                            'time': datetime.datetime.now().isoformat(),
+                                            'sym': symbol,
+                                            'type': f"OPEN {dir_}",
+                                            'price': safe_float(price),
+                                            'reason': 'Executed',
+                                        })
+                                        buying_power -= (qty * price)
+                                    except Exception as e_order:
+                                        market_name = 'ALPACA' if IS_ALPACA else CCXT_EXCHANGE_ID.upper()
+                                        logger.error(f"❌ Error {market_name} {symbol}: {e_order}")
+                                        push_event('error', f"Order failed {symbol}: {e_order}", socketio)
 
                     # History Logging (record the scan result if no order was just placed)
                     # We check if the last item is already this symbol/time to avoid duplicates
-                    if dir_ != 'NEUTRAL':
+                    if dir_ not in ['NEUTRAL', 'NO_TRADE']:
                         hist_type = f"{dir_}" if LIVE_ENABLED else f"SIM {dir_}"
                         state.BOT_HISTORY.insert(0, {
                             'time': datetime.datetime.now().isoformat(),
