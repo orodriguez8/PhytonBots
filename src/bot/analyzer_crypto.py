@@ -61,6 +61,7 @@ class CryptoAnalyzer:
 
         # --- LAYER 1: MACRO TREND (1h) ---
         self.df_1h.ta.ema(length=200, append=True)
+        self.df_1h.ta.rsi(length=14, append=True) # Calculemos RSI también en 1h
         last_1h = self.df_1h.iloc[-1]
         prev_1h = self.df_1h.iloc[-2]
         
@@ -108,7 +109,7 @@ class CryptoAnalyzer:
         # 1. Trend Confirmation (30 pts)
         trend_pts = 0
         if 'EMA_200' in last and last['close'] > last['EMA_200']: trend_pts += 10
-        if 'EMA_9' in last and 'EMA_21' in last and 'EMA_50' in last:
+        if all(k in last for k in ['EMA_9', 'EMA_21', 'EMA_50']):
             if last['EMA_9'] > last['EMA_21'] > last['EMA_50']: trend_pts += 10
         if 'EMA_50' in last and last['close'] > last['EMA_50']: trend_pts += 5
         if 'EMA_50' in last and 'EMA_200' in last and last['EMA_50'] > last['EMA_200']: trend_pts += 5 # Alignment
@@ -119,9 +120,15 @@ class CryptoAnalyzer:
 
         # 2. Momentum (25 pts)
         mom_pts = 0
-        if last['RSI_14'] > 50 and last['RSI_14'] < 70: mom_pts += 10
-        if last['MACD_12_26_9'] > last['MACDs_12_26_9']: mom_pts += 10
-        if last['volume'] > last['vol_ema20']: mom_pts += 5
+        rsi_val = last.get('RSI_14', last.get('RSI_14_CLOSE', 50))
+        if rsi_val > 50 and rsi_val < 70: mom_pts += 10
+        
+        macd_val = last.get('MACD_12_26_9', 0)
+        macd_sig = last.get('MACDs_12_26_9', 0)
+        if macd_val > macd_sig: mom_pts += 10
+        
+        vol_ema = last.get('vol_ema20', 0)
+        if last['volume'] > vol_ema: mom_pts += 5
         score += mom_pts
         if mom_pts >= 15: reasons.append("Positive momentum (RSI/MACD)")
 
@@ -145,7 +152,8 @@ class CryptoAnalyzer:
             reasons.append("Price at 0.500 Fibonacci level")
 
         # Near BB lower band?
-        if last['close'] < last['BBL_20_2.0'] * 1.01: val_pts += 5
+        bbl = last.get('BBL_20_2.0')
+        if bbl and last['close'] < bbl * 1.01: val_pts += 5
         
         score += val_pts
         if val_pts >= 10 and "Fibonacci" not in reasons: reasons.append("Price in value zone (VWAP/Fib/BB)")
@@ -163,7 +171,8 @@ class CryptoAnalyzer:
             reasons.append(f"Indecision: {p_name}")
 
         # RSI Divergence (Very basic: price lower low, RSI higher low over 10 bars)
-        if last['close'] < prev['close'] and last['RSI_14'] > prev['RSI_14'] and last['RSI_14'] < 40:
+        rsi_prev = prev.get('RSI_14', prev.get('RSI_14_CLOSE', 50))
+        if last['close'] < prev['close'] and rsi_val > rsi_prev and rsi_val < 40:
             pat_pts += 10
             if "Pattern detected" not in str(reasons): reasons.append("Potential Bullish Divergence (RSI)")
         
@@ -179,9 +188,15 @@ class CryptoAnalyzer:
 
         # --- SAFETY FILTERS ---
         if fng > 80: return self._no_trade_response("Fear & Greed Index > 80 (Too Greedy)")
-        if last['RSI_14'] > 75: return self._no_trade_response("RSI 2m Overbought (>75)")
-        if last_1h['RSI_14'] > 75: return self._no_trade_response("RSI 1h Overbought (>75)")
-        if last['volume'] < last['vol_ema20'] * 0.7: return self._no_trade_response("Low volume (<70% avg)")
+        
+        rsi_2m = last.get('RSI_14', last.get('RSI_14_CLOSE', 0))
+        rsi_1h = last_1h.get('RSI_14', last_1h.get('RSI_14_CLOSE', 0))
+        
+        if rsi_2m > 75: return self._no_trade_response("RSI 2m Overbought (>75)")
+        if rsi_1h > 75: return self._no_trade_response("RSI 1h Overbought (>75)")
+        
+        vol_avg = last.get('vol_ema20', 0)
+        if last['volume'] < vol_avg * 0.7: return self._no_trade_response("Low volume (<70% avg)")
         
         # Conservative Spread Filter (0.3%) 
         # Since we don't have orderbook in bars, we'll simulate or add a placeholder
@@ -199,7 +214,7 @@ class CryptoAnalyzer:
 
         # Position Management
         entry_price = float(last['close'])
-        atr = float(last['ATRr_14'])
+        atr = float(last.get('ATRr_14', entry_price * 0.02)) # ATR fallback
         # More conservative stop loss: 2.0 * ATR
         stop_loss = entry_price - (2.0 * atr)
         
