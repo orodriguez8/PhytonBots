@@ -6,6 +6,8 @@ import requests
 import logging
 import datetime
 from src.data.alpaca import obtener_datos_alpaca
+from src.data.ccxt import obtener_datos_ccxt
+from src.core.config import TRADING_MODE_CRYPTO
 from src.strategies.patterns.velas import detectar_patron
 
 logger = logging.getLogger(__name__)
@@ -27,9 +29,16 @@ class CryptoAnalyzer:
         self.results = {}
 
     def fetch_data(self):
-        """Fetches 15min and 1h data from Alpaca."""
-        self.df_2m = obtener_datos_alpaca(self.symbol, limit=500, timeframe='2Min')
-        self.df_1h = obtener_datos_alpaca(self.symbol, limit=500, timeframe='1Hour')
+        """Fetches data from Alpaca or CCXT based on config."""
+        is_alpaca = (TRADING_MODE_CRYPTO.upper() == 'ALPACA')
+        
+        if is_alpaca:
+            self.df_2m = obtener_datos_alpaca(self.symbol, limit=500, timeframe='2Min')
+            self.df_1h = obtener_datos_alpaca(self.symbol, limit=500, timeframe='1Hour')
+        else:
+            # Binance / CCXT
+            self.df_2m = obtener_datos_ccxt(self.symbol, limit=500, timeframe='2m')
+            self.df_1h = obtener_datos_ccxt(self.symbol, limit=500, timeframe='1h')
         
         if self.df_2m is None or self.df_1h is None or self.df_2m.empty or self.df_1h.empty:
             return False

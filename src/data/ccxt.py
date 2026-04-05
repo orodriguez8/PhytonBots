@@ -6,16 +6,23 @@ from src.core.config import CCXT_API_KEY, CCXT_SECRET_KEY, CCXT_TESTNET, CCXT_EX
 def _get_exchange():
     """
     Inicializa el exchange configurado via CCXT.
+    Soporta modo Futures para Binance si se solicita.
     """
+    params = {
+        'apiKey': CCXT_API_KEY,
+        'secret': CCXT_SECRET_KEY,
+        'enableRateLimit': True,
+    }
+
+    # Si es Binance, configuramos para operar en FUTUROS (permite SHORT)
+    if 'binance' in CCXT_EXCHANGE_ID.lower():
+        params['options'] = {'defaultType': 'future'}
+
     exchange_cls = getattr(ccxt, CCXT_EXCHANGE_ID, None)
     if exchange_cls is None:
         raise ValueError(f"Exchange CCXT no soportado: {CCXT_EXCHANGE_ID}")
 
-    exchange = exchange_cls({
-        'apiKey': CCXT_API_KEY,
-        'secret': CCXT_SECRET_KEY,
-        'enableRateLimit': True,
-    })
+    exchange = exchange_cls(params)
 
     if CCXT_TESTNET and getattr(exchange, 'urls', None) and exchange.urls.get('test'):
         exchange.set_sandbox_mode(True)
@@ -35,10 +42,14 @@ def obtener_datos_ccxt(symbol='BTC/USDC', timeframe='1h', limit=100):
             elif 'USD' in symbol:
                 symbol = symbol.replace('USD', '/USD')
 
-        exchange = _get_exchange()
-        
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
         
+        if not ohlcv:
+            # Reintentar con símbolo estándar si falla (Binance Futures usa BTC/USDT)
+            if 'binance' in CCXT_EXCHANGE_ID.lower():
+                symbol = symbol.replace('/USD', '/USDT')
+                ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+
         df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df.set_index('timestamp', inplace=True)

@@ -8,10 +8,14 @@ def _get_exchange():
     Inicializa el exchange configurado via CCXT.
     """
     params = {
-        'apiKey': CCXT_API_KEY or os.getenv('CCXT_API_KEY', os.getenv('COINBASE_API_KEY', '')),
-        'secret': CCXT_SECRET_KEY or os.getenv('CCXT_SECRET_KEY', os.getenv('COINBASE_SECRET_KEY', '')),
+        'apiKey': CCXT_API_KEY or os.getenv('CCXT_API_KEY', ''),
+        'secret': CCXT_SECRET_KEY or os.getenv('CCXT_SECRET_KEY', ''),
         'enableRateLimit': True,
     }
+    
+    # Binance Futures configuration
+    if 'binance' in CCXT_EXCHANGE_ID.lower():
+        params['options'] = {'defaultType': 'future'}
 
     exchange_cls = getattr(ccxt, CCXT_EXCHANGE_ID, None)
     if exchange_cls is None:
@@ -28,15 +32,19 @@ def obtener_cuenta_ccxt():
     """
     try:
         exchange = _get_exchange()
-        balance = exchange.fetch_balance()
-        
-        # En Coinbase buscamos balance en USD o USDC
-        main_free = balance.get('USD', {}).get('free', 0.0) or balance.get('USDC', {}).get('free', 0.0)
-        main_total = balance.get('USD', {}).get('total', 0.0) or balance.get('USDC', {}).get('total', 0.0)
+        # In futures, we might need to fetch the futures specific balance
+        if 'binance' in CCXT_EXCHANGE_ID.lower():
+            balance = exchange.fetch_balance(params={'type': 'future'})
+            main_free = balance.get('USDT', {}).get('free', 0.0)
+            main_total = balance.get('USDT', {}).get('total', 0.0)
+        else:
+            balance = exchange.fetch_balance()
+            main_free = balance.get('USD', {}).get('free', 0.0) or balance.get('USDC', {}).get('free', 0.0)
+            main_total = balance.get('USD', {}).get('total', 0.0) or balance.get('USDC', {}).get('total', 0.0)
         
         return {
             'id': f'{CCXT_EXCHANGE_ID}_Acc',
-            'moneda': 'USD',
+            'moneda': 'USDT' if 'binance' in CCXT_EXCHANGE_ID.lower() else 'USD',
             'balance': float(main_free),
             'nav': float(main_total),
             'margen_libre': float(main_free),
@@ -53,12 +61,30 @@ def obtener_posiciones_abiertas_ccxt():
     """
     try:
         exchange = _get_exchange()
-        balance = exchange.fetch_balance()
         
+        # Proper way to fetch positions in CCXT for derivatives
+        if hasattr(exchange, 'fetch_positions'):
+            positions = exchange.fetch_positions()
+            res = []
+            for p in positions:
+                if p['contracts'] is not None and float(p['contracts']) > 0:
+                    res.append({
+                        'instrumento': p['symbol'],
+                        'direccion': p['side'].upper(), # 'LONG' or 'SHORT'
+                        'unidades': float(p['contracts']),
+                        'precio_medio': float(p['entryPrice'] or 0),
+                        'precio_actual': float(p['markPrice'] or 0),
+                        'pl': float(p['unrealizedPnl'] or 0),
+                        'pl_pct': 0.0 # Calculate if needed
+                    })
+            return res
+        
+        # Fallback for Spot (like before)
+        balance = exchange.fetch_balance()
         res = []
         for asset, data in balance.get('total', {}).items():
-            if asset not in ['USD', 'USDC'] and data > 0:
-                symbol = f"{asset}/USD"
+            if asset not in ['USD', 'USDC', 'USDT'] and data > 0:
+                symbol = f"{asset}/USDT"
                 try:
                     ticker = exchange.fetch_ticker(symbol)
                     current_price = ticker['last']
@@ -75,7 +101,7 @@ def obtener_posiciones_abiertas_ccxt():
                     continue
         return res
     except Exception as e:
-        print(f"Error en obtener_posiciones_ccxt (Coinbase): {e}")
+        print(f"Error en obtener_posiciones_ccxt ({CCXT_EXCHANGE_ID}): {e}")
         return []
 
 def colocar_orden_mercado_ccxt(symbol, qty, side):
