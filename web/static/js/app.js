@@ -245,15 +245,19 @@ function renderWatchlist(summary) {
     el.innerHTML = '<div style="font-size:0.7rem;color:var(--dim-2)">Waiting for scan…</div>';
     return;
   }
-  el.innerHTML = entries.map(([sym, d]) => `
-    <div class="watch-item">
-      <span class="watch-sym">${sym}</span>
-      <div style="display:flex;align-items:center;gap:0.4rem">
-        <span class="watch-dir ${d.dir.toLowerCase()}">${d.dir}</span>
-        <span style="font-size:0.6rem;color:var(--dim-2)">${d.time}</span>
+  el.innerHTML = entries.map(([sym, d]) => {
+    const dir = (d.dir || 'Neutral').toUpperCase();
+    const time = d.time || '--:--:--';
+    return `
+      <div class="watch-item">
+        <span class="watch-sym">${sym}</span>
+        <div style="display:flex;align-items:center;gap:0.4rem">
+          <span class="watch-dir ${dir.toLowerCase()}">${dir}</span>
+          <span style="font-size:0.6rem;color:var(--dim-2)">${time}</span>
+        </div>
       </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 // ── Positions Table ───────────────────────────────────────

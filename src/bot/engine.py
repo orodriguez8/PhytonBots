@@ -150,6 +150,9 @@ def trading_loop(socketio=None):
                         dir_ = analysis_res['signal']
                         reason = analysis_res['key_reasons'][0] if analysis_res['key_reasons'] else "No trade"
                         
+                        # Normalize for dashboard
+                        analysis_res['dir'] = dir_
+                        analysis_res['time'] = datetime.datetime.now().strftime('%H:%M:%S')
                         state.LAST_RUN_LOG[symbol] = analysis_res
                         logger.info(f"🔍 ANALYSIS {symbol}: {dir_} (Score: {analysis_res['confidence_score']})")
                         
@@ -186,8 +189,6 @@ def trading_loop(socketio=None):
                     if LIVE_ENABLED:
                         if current_pos:
                             is_long = current_pos['direccion'] == 'LONG'
-                            # Conservative exit: close if trend reverses or signal is weak/neutral
-                            # Crypto bot uses 'NO_TRADE', Stock bot uses 'NEUTRAL'
                             should_close = (
                                 (dir_ in ['NEUTRAL', 'NO_TRADE'])
                                 or (is_long and dir_ == 'SHORT')
@@ -245,10 +246,11 @@ def trading_loop(socketio=None):
                                     push_event('error', f"Order failed {symbol}: {e_order}", socketio)
 
                     elif dir_ != 'NEUTRAL':
+                        hist_type = f"{dir_}" if LIVE_ENABLED else f"SIM {dir_}"
                         state.BOT_HISTORY.insert(0, {
                             'time': datetime.datetime.now().strftime('%d/%m %H:%M'),
                             'sym': symbol,
-                            'type': f"SIM {dir_}",
+                            'type': hist_type,
                             'price': safe_float(price),
                             'reason': reason,
                         })
@@ -262,4 +264,4 @@ def trading_loop(socketio=None):
 
             time.sleep(60)
         else:
-            time.sleep(10)
+            time.sleep(1) # Check toggle state more frequently
