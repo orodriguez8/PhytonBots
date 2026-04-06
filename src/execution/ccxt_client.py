@@ -4,31 +4,7 @@ import time
 import random
 from src.core.config import CCXT_API_KEY, CCXT_SECRET_KEY, CCXT_TESTNET, CCXT_EXCHANGE_ID
 
-# --- Circuit Breaker & Retry State ---
-CIRCUIT_MAX_FAILURES = 5
-_consecutive_failures = 0
-_is_paused = False
-_pause_until = 0
-
-def get_circuit_breaker_status():
-    """Devuelve si el sistema está en pausa por errores técnicos."""
-    global _is_paused, _pause_until
-    if _is_paused and time.time() > _pause_until:
-        _is_paused = False # Reset automático tras el tiempo de espera
-    return _is_paused
-
-def _record_success():
-    global _consecutive_failures, _is_paused
-    _consecutive_failures = 0
-    _is_paused = False
-
-def _record_failure():
-    global _consecutive_failures, _is_paused, _pause_until
-    _consecutive_failures += 1
-    if _consecutive_failures >= CIRCUIT_MAX_FAILURES:
-        _is_paused = True
-        _pause_until = time.time() + 300 # Pausa de 5 minutos
-        print(f"🚨 CIRCUIT BREAKER: {CIRCUIT_MAX_FAILURES} errores seguidos. Pausando 5min.")
+from src.core.health import get_circuit_breaker_status, record_success, record_failure
 
 def _get_exchange():
     """
@@ -73,7 +49,7 @@ def obtener_cuenta_ccxt():
                 main_free = balance.get('USD', {}).get('free', 0.0) or balance.get('USDC', {}).get('free', 0.0)
                 main_total = balance.get('USD', {}).get('total', 0.0) or balance.get('USDC', {}).get('total', 0.0)
             
-            _record_success()
+            record_success()
             return {
                 'id': f'{CCXT_EXCHANGE_ID}_Acc',
                 'moneda': 'USDT' if 'binance' in CCXT_EXCHANGE_ID.lower() else 'USD',
@@ -88,13 +64,16 @@ def obtener_cuenta_ccxt():
             print(f"⚠️ Reintento {attempt+1}/3 (Backoff {wait:.1f}s) en obtener_cuenta_ccxt: {e}")
             time.sleep(wait)
     
-    _record_failure()
+    record_failure()
     return None
 
 def obtener_posiciones_abiertas_ccxt():
     """
-    Obtiene saldos de criptos que no sean USD/USDC.
+    Obtiene las posiciones abiertas respetando el Circuit Breaker.
     """
+    if get_circuit_breaker_status():
+        return []
+
     try:
         exchange = _get_exchange()
         
@@ -113,7 +92,7 @@ def obtener_posiciones_abiertas_ccxt():
                         'pl': float(p['unrealizedPnl'] or 0),
                         'pl_pct': 0.0 # Calculate if needed
                     })
-            _record_success()
+            record_success()
             return res
         
         # Fallback for Spot (like before)
@@ -140,7 +119,7 @@ def obtener_posiciones_abiertas_ccxt():
         return res
     except Exception as e:
         print(f"Error en obtener_posiciones_ccxt ({CCXT_EXCHANGE_ID}): {e}")
-        _record_failure()
+        record_failure()
         return []
 
 def colocar_orden_mercado_ccxt(symbol, qty, side):
@@ -164,7 +143,7 @@ def colocar_orden_mercado_ccxt(symbol, qty, side):
         return order
     except Exception as e:
         print(f"Error colocando orden CCXT-{CCXT_EXCHANGE_ID} en {symbol}: {e}")
-        _record_failure()
+        record_failure()
         raise e
 
 def cancelar_todas_las_ordenes_ccxt():
@@ -183,5 +162,5 @@ def cancelar_todas_las_ordenes_ccxt():
         return True
     except Exception as e:
         print(f"Error cancelando órdenes CCXT-{CCXT_EXCHANGE_ID}: {e}")
-        _record_failure()
+        record_failure()
         return False

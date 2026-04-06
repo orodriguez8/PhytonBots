@@ -11,6 +11,7 @@ from src.core.config import (
     TRADING_MODE_CRYPTO, ALPACA_API_KEY, ALPACA_SECRET_KEY,
     CCXT_API_KEY, CCXT_EXCHANGE_ID
 )
+from src.core.health import get_circuit_breaker_status
 
 # Providers and wrappers
 from src.execution import alpaca_client, ccxt_client
@@ -138,7 +139,7 @@ def trading_loop(socketio=None):
                 positions_list = get_positions()
 
             # Check Circuit Breaker
-            if not IS_ALPACA and ccxt_client.get_circuit_breaker_status():
+            if not IS_ALPACA and get_circuit_breaker_status():
                 logger.warning("📉 CIRCUIT BREAKER activo. Saltando ciclo para evitar spam.")
                 push_event('warn', "Circuit Breaker Active: Skipping cycle to prevent spam", socketio)
                 time.sleep(60)

@@ -2,6 +2,7 @@ import ccxt
 import pandas as pd
 import time
 from src.core.config import CCXT_API_KEY, CCXT_SECRET_KEY, CCXT_TESTNET, CCXT_EXCHANGE_ID
+from src.core.health import get_circuit_breaker_status, record_success, record_failure
 
 def _get_exchange():
     """
@@ -31,8 +32,11 @@ def _get_exchange():
 
 def obtener_datos_ccxt(symbol='BTC/USDC', timeframe='1h', limit=100):
     """
-    Obtiene velas OHLCV del exchange configurado y las devuelve como DataFrame.
+    Obtiene velas OHLCV respetando el Circuit Breaker.
     """
+    if get_circuit_breaker_status():
+        return None
+
     try:
         # En Coinbase el par suele ser /USDC o /USD
         if '/' not in symbol:
@@ -58,9 +62,11 @@ def obtener_datos_ccxt(symbol='BTC/USDC', timeframe='1h', limit=100):
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df.set_index('timestamp', inplace=True)
         
+        record_success()
         return df
     except Exception as e:
         print(f"Error obteniendo datos de CCXT-{CCXT_EXCHANGE_ID} ({symbol}): {e}")
+        record_failure()
         return None
 
 if __name__ == "__main__":
