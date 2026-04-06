@@ -49,7 +49,8 @@ CRYPTO_ATR_TP = 3.5
 
 # --- Vigilancia (Watchlist) ---
 WATCHLIST = [
-    'AAPL', 'MSFT', 'TSLA', 'META', 'AMZN', 'NVDA'
+    'AAPL', 'MSFT', 'TSLA', 'META', 'AMZN', 'NVDA',
+    'BTC/USD', 'ETH/USD', 'SOL/USD', 'LTC/USD'
 ]
 # Nota: Forex en Alpaca requiere permisos específicos, pero el bot ya lo soporta.
 

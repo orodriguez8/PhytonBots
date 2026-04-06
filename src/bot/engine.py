@@ -152,41 +152,26 @@ def trading_loop(socketio=None):
                 try:
                     is_crypto = any(q in symbol.upper() for q in ['USD', 'USDT', 'USDC', '/'])
                     
-                    if is_crypto:
-                        analyzer = CryptoAnalyzer(symbol, real_equity, RIESGO_POR_OPERACION)
-                        analysis_res = analyzer.analyze()
-                        dir_ = analysis_res['signal']
-                        reason = analysis_res['key_reasons'][0] if analysis_res['key_reasons'] else "No trade"
-                        
-                        # Normalize for dashboard
-                        analysis_res['dir'] = dir_
-                        analysis_res['time'] = datetime.datetime.now().isoformat()
-                        state.LAST_RUN_LOG[symbol] = analysis_res
-                        logger.info(f"🔍 ANALYSIS {symbol}: {dir_} (Score: {analysis_res['confidence_score']})")
-                        
-                        price = analysis_res['entry_price']
-                        if price <= 0:
-                            datos = get_data(symbol)
-                            if datos is not None and not datos.empty:
-                                price = float(datos['close'].iloc[-1])
-                    else:
-                        datos = get_data(symbol)
-                        if datos is None or datos.empty:
-                            logger.warning(f"⚠️ {symbol}: Sin datos, saltando.")
-                            push_event('warn', f"{symbol}: No data, skipping", socketio)
-                            continue
+                    datos = get_data(symbol)
+                    if datos is None or datos.empty:
+                        logger.warning(f"⚠️ {symbol}: Sin datos, saltando.")
+                        push_event('warn', f"{symbol}: No data, skipping", socketio)
+                        continue
 
-                        bot = TradingBot(datos, real_equity, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS)
-                        bot.ejecutar()
-                        dec = bot.decision
-                        dir_ = dec['direccion']
-                        reason = dec['razon']
-                        state.LAST_RUN_LOG[symbol] = {
-                            'time': datetime.datetime.now().isoformat(),
-                            'dir': dir_,
-                            'reason': reason,
-                        }
-                        price = float(datos['close'].iloc[-1])
+                    # Unificamos todo bajo el mismo TradingBot (que ya tiene logica separada interna)
+                    bot = TradingBot(datos, real_equity, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS, is_crypto=is_crypto)
+                    bot.ejecutar()
+                    dec = bot.decision
+                    dir_ = dec['direccion']
+                    reason = dec['razon']
+                    
+                    state.LAST_RUN_LOG[symbol] = {
+                        'time': datetime.datetime.now().isoformat(),
+                        'dir': dir_,
+                        'reason': reason,
+                    }
+                    price = float(datos['close'].iloc[-1])
+
 
                     norm_sym = symbol.replace('/', '').upper()
                     current_pos = next(
@@ -219,15 +204,10 @@ def trading_loop(socketio=None):
 
                         elif dir_ == 'LONG':
                             side = 'buy'
-                            if is_crypto:
-                                raw_qty = (real_equity * (analysis_res['position_size_pct'] / 100)) / price
-                                sl = analysis_res['stop_loss']
-                                tp = analysis_res['take_profit_1']
-                            else:
-                                ges = dec.get('gestion', {})
-                                raw_qty = float(ges.get('tamano_posicion', 0))
-                                sl = ges.get('stop_loss')
-                                tp = ges.get('take_profit')
+                            ges = dec.get('gestion', {})
+                            raw_qty = float(ges.get('tamano_posicion', 0))
+                            sl = ges.get('stop_loss')
+                            tp = ges.get('take_profit')
 
                             safe_bp_cap = buying_power * 0.10
                             if (raw_qty * price) > safe_bp_cap:
@@ -259,17 +239,10 @@ def trading_loop(socketio=None):
                                 side = None
                             else:
                                 side = 'sell'
-                                if is_crypto:
-                                    # Crypto branch (CCXT or others that support shorting)
-                                    raw_qty = (real_equity * (analysis_res['position_size_pct'] / 100)) / price
-                                    sl = analysis_res['stop_loss']
-                                    tp = analysis_res['take_profit_1']
-                                else:
-                                    # Stock branch (Alpaca margin accounts)
-                                    ges = dec.get('gestion', {})
-                                    raw_qty = float(ges.get('tamano_posicion', 0))
-                                    sl = ges.get('stop_loss')
-                                    tp = ges.get('take_profit')
+                                ges = dec.get('gestion', {})
+                                raw_qty = float(ges.get('tamano_posicion', 0))
+                                sl = ges.get('stop_loss')
+                                tp = ges.get('take_profit')
 
                                 # BP check for shorting
                                 safe_bp_cap = buying_power * 0.10
