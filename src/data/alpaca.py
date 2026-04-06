@@ -44,16 +44,19 @@ def obtener_datos_alpaca(symbol: str = 'BTC/USD', limit: int = 300, timeframe: s
                 '1Hour': TimeFrame.Hour,
                 '1Day': TimeFrame.Day
             }
+            # Formatting end time explicitly in RFC-3339 without microseconds to avoid Alpaca API format errors
+            end_time = now.strftime('%Y-%m-%dT%H:%M:%SZ')
+            
             bars = api.get_bars(
                 symbol, 
                 tf_map.get(timeframe, TimeFrame.Hour), 
-                start=start_time, 
+                end=end_time,
                 limit=limit, 
                 feed='iex'
             ).df
             if bars is None or bars.empty: return None
             df = bars[['open', 'high', 'low', 'close', 'volume']].copy()
-            return df.tail(limit)
+            return df
         else:
             # Crypto data via direct API
             fetch_sym = symbol if '/' in symbol else symbol.replace('USD', '/USD').replace('USDT', '/USDT').replace('USDC', '/USDC')
