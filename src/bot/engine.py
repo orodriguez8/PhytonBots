@@ -137,6 +137,13 @@ def trading_loop(socketio=None):
                     buying_power = float(acc.get('margen_libre', real_equity))
                 positions_list = get_positions()
 
+            # Check Circuit Breaker
+            if not IS_ALPACA and ccxt_client.get_circuit_breaker_status():
+                logger.warning("📉 CIRCUIT BREAKER activo. Saltando ciclo para evitar spam.")
+                push_event('warn', "Circuit Breaker Active: Skipping cycle to prevent spam", socketio)
+                time.sleep(60)
+                continue
+
             logger.info(f"--- 🌀 CICLO: Equity ${real_equity} | BP ${buying_power} | Posiciones: {len(positions_list)} ---")
             push_event('info', f"Cycle: Equity ${real_equity:,.2f} | BP ${buying_power:,.2f} | {len(positions_list)} pos", socketio)
 
