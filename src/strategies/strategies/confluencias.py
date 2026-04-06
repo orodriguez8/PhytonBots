@@ -5,14 +5,13 @@
 import pandas as pd
 from src.core.config import RSI_SOBREVENTA, RSI_SOBRECOMPRA
 
-def contar_confluencias(datos: pd.DataFrame, indicadores: dict) -> dict:
+def contar_confluencias(datos: pd.DataFrame, indicadores: dict, is_crypto: bool = False) -> dict:
     """
-    Evalúa condiciones de alta probabilidad para trading automático.
+    Evalúa condiciones de alta probabilidad separando la lógica de Acciones vs Cripto.
     """
     long_confs  = []
     short_confs = []
 
-    # -- Datos actuales --
     p   = datos['close'].iloc[-1]
     e20 = indicadores['ema_20'].iloc[-1]
     e50 = indicadores['ema_50'].iloc[-1]
@@ -22,46 +21,67 @@ def contar_confluencias(datos: pd.DataFrame, indicadores: dict) -> dict:
     sig  = indicadores['macd_signal'].iloc[-1]
     hist = indicadores['macd_histogram'].iloc[-1]
     
-    # 1. TENDENCIA MAESTRA (Filtro Principal)
-    tendencia_alcista = p > e200 and e50 > e200
-    tendencia_bajista = p < e200 and e50 < e200
+    bb_sup = indicadores['bb_superior'].iloc[-1]
+    bb_inf = indicadores['bb_inferior'].iloc[-1]
     
-    if tendencia_alcista:
-        long_confs.append("Tendencia Alcista Confirmada (Precio > EMA 200)")
-    if tendencia_bajista:
-        short_confs.append("Tendencia Bajista Confirmada (Precio < EMA 200)")
-        
-    # 2. MOMENTUM (EMAs Rápidas)
-    if e20 > e50:
-        long_confs.append("Cruce de EMA 20/50 Alcista (Momentum)")
-    if e20 < e50:
-        short_confs.append("Cruce de EMA 20/50 Bajista (Momentum)")
+    try:
+        hist_previo = indicadores['macd_histogram'].iloc[-2]
+    except:
+        hist_previo = hist
 
-    # 3. MACD ALINEADO
-    if macd > sig and hist > 0:
-        long_confs.append("MACD Alcista (Histograma > 0)")
-    if macd < sig and hist < 0:
-        short_confs.append("MACD Bajista (Histograma < 0)")
-        
-    # 4. RSI (Filtro de Extremos)
-    # No queremos comprar si ya está muy estirado
-    if rsi < 65 and rsi > 45 and p > e20: # Pullback alcista
-        long_confs.append("RSI en zona de continuacion alcista")
-    if rsi > 35 and rsi < 55 and p < e20: # Pullback bajista
-        short_confs.append("RSI en zona de continuacion bajista")
-        
-    # Zona de Reversion (Solo si hay tendencia clara)
-    if rsi < RSI_SOBREVENTA:
-        long_confs.append("Sobreventa extrema detectada")
-    if rsi > RSI_SOBRECOMPRA:
-        short_confs.append("Sobrecompra extrema detectada")
+    if not is_crypto:
+        # =========================================================================
+        # ESTRATEGIA ACCIONES (Asimétrica Trend Following)
+        # =========================================================================
+        if e50 > e200 and e20 > e50:
+            long_confs.append("Filtro Macro: Full Tendencia Alcista (Doble confirmación)")
+            
+        if p > e20 and p < bb_sup * 0.995: 
+            long_confs.append("Filtro Estructural: Flotando sobre EMA 20 pero con recorrido hacia arriba")
 
-    # 5. VOLUMEN (Confirmacion Institucional)
-    vol_act = datos['volume'].iloc[-1]
-    vol_med = indicadores['volumen_medio'].iloc[-1]
-    if vol_act > vol_med * 1.5:
-        long_confs.append("Volumen Inusualmente Alto (Anomalia)")
-        short_confs.append("Volumen Inusualmente Alto (Anomalia)")
+        if 45 <= rsi <= 65:
+            long_confs.append("Filtro Fuerza: RSI en canal alcista sano y sin sobrecompra")
+            
+        if hist > 0 and macd > sig:
+            long_confs.append("Disparador Momentum: MACD en ciclo pleno de expansión alcista")
+
+        # Cortos en Acciones
+        if e50 < e200 and e20 < e50:
+            short_confs.append("Filtro Macro: Full Tendencia Bajista (Doble confirmación)")
+
+        if p < e20 and p > bb_inf * 1.005:
+            short_confs.append("Filtro Estructural: Debajo de EMA 20 pero con recorrido hacia abajo")
+
+        if 35 <= rsi <= 55:
+            short_confs.append("Filtro Fuerza: RSI en canal bajista sano y sin sobreventa")
+
+        if hist < 0 and macd < sig:
+            short_confs.append("Disparador Momentum: MACD en ciclo pleno de contracción bajista")
+
+    else:
+        # =========================================================================
+        # ESTRATEGIA CRIPTO ULTRA-AGRESIVA (Market Inhaler)
+        # Maximiza la actividad buscando entrar en casi cualquier corrección.
+        # =========================================================================
+        
+        # 1. Filtro Bollinger: (Tolerancia 1.5% sobre la banda inferior)
+        if p <= bb_inf * 1.015:
+            long_confs.append("Disparador Fuerte: Precio en zona baja del canal de Bollinger")
+            
+        # 2. Descuento Mínimo Intradiario
+        if p < e20 * 0.998: # Solo un 0.2% de descuento es suficiente para ser agresivo
+            long_confs.append("Filtro Estructural: Micro-pullback sobre media de 20h")
+
+        # 3. Fuerza Exhausta (RSI < 55)
+        if rsi < 55:
+            long_confs.append("Filtro Agotamiento: RSI por debajo del nivel neutral")
+            
+        # 4. DISPARADOR DE REBOTE (Inercia positiva)
+        if hist > hist_previo or macd > sig:
+            long_confs.append("Disparador Momentum: MACD con inercia favorable")
+            
+        # Cortos deshabilitados
+        pass
 
     return {
         'long':        long_confs,

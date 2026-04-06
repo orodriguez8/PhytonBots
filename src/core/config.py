@@ -37,9 +37,15 @@ else:
     ALPACA_BASE_URL = _base_env.rstrip('/').replace('/v2', '')
 
 # --- Multiplicadores ATR para Stop Loss y Take Profit ---
-MULTIPLICADOR_ATR_SL = 2.0       # Stop Loss  = entrada ± (ATR × 2.0)
-MULTIPLICADOR_ATR_TP = 4.0       # Take Profit = entrada ± (ATR × 4.0)
-# → Esto da un ratio Riesgo:Beneficio de 1:2
+# Estrategia Asimétrica para ACCIONES (Trend Following)
+STOCK_ATR_SL = 1.5       # Stop Loss Ajustado
+STOCK_ATR_TP = 4.5       # Take Profit Largo (1:3 Risk/Reward)
+
+# Estrategia Seguro para CRIPTO (Optimized Mean Reversion)
+# Ajustamos a un ratio positivo de 1:1.4 (Win 3.5 ATR / SL 2.5 ATR)
+CRYPTO_ATR_SL = 2.5
+CRYPTO_ATR_TP = 3.5
+
 
 # --- Vigilancia (Watchlist) ---
 WATCHLIST = [

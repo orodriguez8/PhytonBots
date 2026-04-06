@@ -15,7 +15,8 @@
 
 from src.core.config import (
     CAPITAL_INICIAL, RIESGO_POR_OPERACION,
-    MULTIPLICADOR_ATR_SL, MULTIPLICADOR_ATR_TP
+    STOCK_ATR_SL, STOCK_ATR_TP,
+    CRYPTO_ATR_SL, CRYPTO_ATR_TP
 )
 
 
@@ -23,37 +24,16 @@ def calcular_gestion_riesgo(direccion: str,
                               precio_entrada: float,
                               atr: float,
                               capital: float = CAPITAL_INICIAL,
-                              mult_sl: float  = MULTIPLICADOR_ATR_SL,
-                              mult_tp: float  = MULTIPLICADOR_ATR_TP,
-                              riesgo: float   = RIESGO_POR_OPERACION) -> dict:
-    """
-    Calcula el stop loss, take profit y tamaño de posición para una operación.
+                              riesgo: float   = RIESGO_POR_OPERACION,
+                              is_crypto: bool = False) -> dict:
+    # Seleccion de parametros segun el activo
+    if is_crypto:
+        mult_sl = CRYPTO_ATR_SL
+        mult_tp = CRYPTO_ATR_TP
+    else:
+        mult_sl = STOCK_ATR_SL
+        mult_tp = STOCK_ATR_TP
 
-    Fórmulas:
-        LONG:
-            Stop Loss   = entrada - (ATR × mult_sl)
-            Take Profit = entrada + (ATR × mult_tp)
-        SHORT:
-            Stop Loss   = entrada + (ATR × mult_sl)
-            Take Profit = entrada - (ATR × mult_tp)
-
-        Riesgo por unidad   = |entrada - stop_loss|
-        Capital en riesgo   = capital_total × riesgo_por_operacion
-        Tamaño de posición  = capital_en_riesgo / riesgo_por_unidad
-
-    Args:
-        direccion     : 'LONG' o 'SHORT'
-        precio_entrada: Precio al que se ejecuta la entrada
-        atr           : Valor actual del ATR
-        capital       : Capital total disponible
-        mult_sl       : Multiplicador del ATR para el Stop Loss
-        mult_tp       : Multiplicador del ATR para el Take Profit
-        riesgo        : Fracción del capital a arriesgar (ej: 0.02 = 2%)
-
-    Returns:
-        Diccionario con la gestión completa de la operación, o {} si la
-        dirección no es válida.
-    """
     if direccion == 'LONG':
         stop_loss   = precio_entrada - (atr * mult_sl)
         take_profit = precio_entrada + (atr * mult_tp)

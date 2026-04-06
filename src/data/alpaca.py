@@ -22,19 +22,22 @@ def obtener_datos_alpaca(symbol: str = 'BTC/USD', limit: int = 300, timeframe: s
     # Normalize symbol
     is_crypto = any(q in symbol.upper() for q in ['USD', 'USDT', 'USDC', '/'])
     
-    # Calculate start time to ensure we have enough bars for indicators (e.g. EMA 200)
-    # 500 bars 15Min ~= 5.2 days, 1Hour ~= 21 days.
+    # Calculate start time ensuring we have enough bars (stocks only trade 6.5h/day)
     now = datetime.datetime.now(datetime.timezone.utc)
+    # Conservativo: Asumimos que sólo hay unas 6 horas útiles por día de mercado para acciones (multiplicador x4)
+    buffer = 4 if not is_crypto else 1 
+    
     if timeframe == '1Day':
-        start_time = (now - datetime.timedelta(days=limit + 30)).isoformat()
+        start_time = (now - datetime.timedelta(days=(limit * buffer) + 30)).strftime('%Y-%m-%dT%H:%M:%SZ')
     elif timeframe == '1Hour':
-        start_time = (now - datetime.timedelta(days=(limit // 24) + 7)).isoformat()
+        start_time = (now - datetime.timedelta(days=(limit // 6 * buffer) + 7)).strftime('%Y-%m-%dT%H:%M:%SZ')
     elif timeframe == '15Min':
-        start_time = (now - datetime.timedelta(days=(limit // 96) + 3)).isoformat()
+        start_time = (now - datetime.timedelta(days=(limit // 24 * buffer) + 3)).strftime('%Y-%m-%dT%H:%M:%SZ')
     else:
-        start_time = (now - datetime.timedelta(days=limit)).isoformat()
+        start_time = (now - datetime.timedelta(days=limit * buffer)).strftime('%Y-%m-%dT%H:%M:%SZ')
 
     try:
+        end_time = now.strftime('%Y-%m-%dT%H:%M:%SZ')
         if not is_crypto:
             api = tradeapi.REST(key, secret, base, api_version='v2')
             # Stock data via library
@@ -44,46 +47,45 @@ def obtener_datos_alpaca(symbol: str = 'BTC/USD', limit: int = 300, timeframe: s
                 '1Hour': TimeFrame.Hour,
                 '1Day': TimeFrame.Day
             }
-            # Formatting end time explicitly in RFC-3339 without microseconds to avoid Alpaca API format errors
-            end_time = now.strftime('%Y-%m-%dT%H:%M:%SZ')
             
             bars = api.get_bars(
                 symbol, 
                 tf_map.get(timeframe, TimeFrame.Hour), 
+                start=start_time,
                 end=end_time,
-                limit=limit, 
                 feed='iex'
             ).df
+            
             if bars is None or bars.empty: return None
             df = bars[['open', 'high', 'low', 'close', 'volume']].copy()
-            return df
+            return df.tail(limit)
         else:
-            # Crypto data via direct API
+            # Crypto data via SDK para manejar paginación y límites grandes automáticamente
+            api = tradeapi.REST(key, secret, base, api_version='v2')
             fetch_sym = symbol if '/' in symbol else symbol.replace('USD', '/USD').replace('USDT', '/USDT').replace('USDC', '/USDC')
-            url = "https://data.alpaca.markets/v1beta3/crypto/us/bars"
-            params = {
-                "symbols": fetch_sym,
-                "timeframe": timeframe, # Alpaca accepts "15Min", "1Hour"...
-                "limit": limit,
-                "start": start_time
+            
+            tf_map = {
+                '1Min': tradeapi.TimeFrame.Minute,
+                '15Min': tradeapi.TimeFrame(15, tradeapi.TimeFrame.Minute),
+                '1Hour': tradeapi.TimeFrame.Hour,
+                '1Day': tradeapi.TimeFrame.Day
             }
-            headers = {
-                "APCA-API-KEY-ID": key,
-                "APCA-API-SECRET-KEY": secret
-            }
-            r = requests.get(url, params=params, headers=headers)
-            if r.status_code == 200:
-                data = r.json()
-                bars_list = data.get('bars', {}).get(fetch_sym, [])
-                if not bars_list: return None
-                df = pd.DataFrame(bars_list)
-                # Map Alpaca internal keys
-                df = df.rename(columns={'t':'time', 'o':'open', 'h':'high', 'l':'low', 'c':'close', 'v':'volume'})
-                df.index = pd.to_datetime(df['time'])
-                return df[['open', 'high', 'low', 'close', 'volume']].tail(limit)
-            else:
-                logger.error(f"❌ API Error {symbol}: {r.status_code} {r.text}")
-                return None
+            
+            bars = api.get_crypto_bars(
+                fetch_sym, 
+                tf_map.get(timeframe, tradeapi.TimeFrame.Hour),
+                start=start_time,
+                end=end_time
+            ).df
+            
+            if bars is None or bars.empty: return None
+            
+            # Limpiar MultiIndex si existe (Alpaca suele devolverlo con el símbolo y timestamp)
+            if hasattr(bars.index, 'levels'):
+                bars = bars.xs(fetch_sym, level='symbol')
+            
+            df = bars[['open', 'high', 'low', 'close', 'volume']].copy()
+            return df.tail(limit)
                 
     except Exception as e:
         logger.error(f"❌ Exception {symbol}: {e}")

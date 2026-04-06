@@ -50,12 +50,14 @@ class TradingBot:
     def __init__(self, datos: pd.DataFrame,
                  capital: float          = CAPITAL_INICIAL,
                  riesgo: float           = RIESGO_POR_OPERACION,
-                 min_confluencias: int   = MIN_CONFLUENCIAS):
+                 min_confluencias: int   = MIN_CONFLUENCIAS,
+                 is_crypto: bool         = False):
 
         self.datos            = datos.copy()
         self.capital          = capital
         self.riesgo           = riesgo
         self.min_confluencias = min_confluencias
+        self.is_crypto        = is_crypto
 
         # Estado interno — se rellenan al llamar a ejecutar()
         self.indicadores       = {}
@@ -133,7 +135,7 @@ class TradingBot:
         Returns:
             Diccionario con la decisión completa de la operación
         """
-        resultado = contar_confluencias(self.datos, self.indicadores)
+        resultado = contar_confluencias(self.datos, self.indicadores, is_crypto=self.is_crypto)
 
         self.confluencias_long  = resultado['long']
         self.confluencias_short = resultado['short']
@@ -154,13 +156,13 @@ class TradingBot:
         if total_long >= self.min_confluencias and total_long > total_short:
             decision['direccion'] = 'LONG'
             decision['gestion']   = calcular_gestion_riesgo(
-                'LONG', precio, atr, self.capital, riesgo=self.riesgo)
+                'LONG', precio, atr, self.capital, riesgo=self.riesgo, is_crypto=self.is_crypto)
             decision['razon'] = f"Señal LONG con {total_long} confluencias alcistas"
 
         elif total_short >= self.min_confluencias and total_short > total_long:
             decision['direccion'] = 'SHORT'
             decision['gestion']   = calcular_gestion_riesgo(
-                'SHORT', precio, atr, self.capital, riesgo=self.riesgo)
+                'SHORT', precio, atr, self.capital, riesgo=self.riesgo, is_crypto=self.is_crypto)
             decision['razon'] = f"Señal SHORT con {total_short} confluencias bajistas"
 
         elif total_long >= self.min_confluencias and total_short >= self.min_confluencias:
