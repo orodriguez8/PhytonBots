@@ -230,6 +230,18 @@ def trading_loop(socketio=None):
 
                             should_close = signal_close or sl_hit or tp_hit
 
+                            # Verificación de órdenes pendientes para evitar duplicados (Spam)
+                            all_pending = get_orders()
+                            pending_order = next(
+                                (o for o in all_pending if o['symbol'].upper() == norm_sym),
+                                None
+                            )
+
+                            if pending_order:
+                                logger.warning(f"⚠️ {symbol}: Ya hay una orden pendiente ({pending_order['status']}). Saltando...")
+                                push_event('warn', f"{symbol}: Order already pending ({pending_order['status']})", socketio)
+                                continue
+
                             if should_close:
                                 market_name = 'ALPACA' if IS_ALPACA else CCXT_EXCHANGE_ID.upper()
                                 reason_close = f"Signal {dir_}"
