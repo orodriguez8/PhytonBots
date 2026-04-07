@@ -79,12 +79,14 @@ def obtener_posiciones_cerradas():
     try:
         from dateutil import parser
         api = _get_api()
-        # Buscamos 'FILL' (ejecuciones) con un pageSize mayor y dirección descendente
-        activities = api.get_activities(activity_types='FILL', pageSize=100, direction='desc')
+        # Buscamos 'FILL' y 'PTRADE' (que a veces se usa para cierres)
+        tipos = ['FILL', 'PTRADE']
+        activities = api.get_activities(activity_types=tipos, pageSize=100, direction='desc')
+        
+        # print(f"DEBUG: Encontradas {len(activities)} actividades") # Útil para logs del server
         
         agrupados = {}
         for f in activities:
-            # Atributos básicos
             symbol = getattr(f, 'symbol', '')
             side = getattr(f, 'side', '').upper()
             qty = float(getattr(f, 'qty', 0))
@@ -92,13 +94,11 @@ def obtener_posiciones_cerradas():
             
             if not symbol or not side or qty <= 0: continue
             
-            # Gestionar tiempo (puede ser string o datetime)
             t = getattr(f, 'transaction_time', None)
             if not t: continue
             if isinstance(t, str):
                 t = parser.parse(t)
             
-            # Clave de agrupación por símbolo, lado y minuto para consolidar lotes
             time_key = t.strftime('%Y-%m-%d %H:%M')
             key = f"{symbol}_{side}_{time_key}"
             
@@ -116,7 +116,7 @@ def obtener_posiciones_cerradas():
 
         res = []
         buys = {}
-        # Ordenar de antiguo a nuevo para casar P/L
+        # Ordenar de antiguo a nuevo para casar P/L correctamente
         sorted_keys = sorted(agrupados.keys(), key=lambda x: agrupados[x]['time'])
         
         for k in sorted_keys:
@@ -138,9 +138,10 @@ def obtener_posiciones_cerradas():
                     'time': item['time']
                 })
         
-        # Fallback: Si no hay ventas casadas, mostrar todos los movimientos agrupados recientes
+        # Si NO hay cierres calculados (res vacío), mostrar los últimos movimientos agrupados (FALLBACK)
+        # Esto sirve para que el usuario vea AL MENOS las compras abiertas o ventas sin match.
         if not res:
-            return [{ 
+            final_fallback = [{ 
                 's': i['s'], 
                 'side': i['side'], 
                 'q': round(i['q'], 4), 
@@ -148,10 +149,11 @@ def obtener_posiciones_cerradas():
                 'pl': 0, 
                 'time': i['time'] 
             } for i in sorted(agrupados.values(), key=lambda x: x['time'], reverse=True)[:10]]
+            return final_fallback
             
         return res[:10]
     except Exception as e:
-        print(f"Error en historial de cerradas revisado: {e}")
+        print(f"ERROR en obtener_posiciones_cerradas: {e}")
         return []
 
 def obtener_ordenes_activas():
