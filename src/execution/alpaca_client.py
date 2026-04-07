@@ -77,54 +77,68 @@ def obtener_posiciones_cerradas():
     para evitar duplicados visuales y mostrar el P/L real por operación.
     """
     try:
+        from dateutil import parser
         api = _get_api()
-        # Buscamos 'FILL' (ejecuciones) de los últimos días
-        activities = api.get_activities(activity_types='FILL')
+        # Buscamos 'FILL' (ejecuciones) con un pageSize mayor y dirección descendente
+        activities = api.get_activities(activity_types='FILL', pageSize=100, direction='desc')
         
         agrupados = {}
         for f in activities:
-            if not (hasattr(f, 'price') and hasattr(f, 'qty')): continue
+            # Atributos básicos
+            symbol = getattr(f, 'symbol', '')
+            side = getattr(f, 'side', '').upper()
+            qty = float(getattr(f, 'qty', 0))
+            price = float(getattr(f, 'price', 0))
             
-            time_key = f.transaction_time.strftime('%Y-%m-%d %H:%M')
-            key = f"{f.symbol}_{f.side}_{time_key}"
+            if not symbol or not side or qty <= 0: continue
+            
+            # Gestionar tiempo (puede ser string o datetime)
+            t = getattr(f, 'transaction_time', None)
+            if not t: continue
+            if isinstance(t, str):
+                t = parser.parse(t)
+            
+            # Clave de agrupación por símbolo, lado y minuto para consolidar lotes
+            time_key = t.strftime('%Y-%m-%d %H:%M')
+            key = f"{symbol}_{side}_{time_key}"
             
             if key not in agrupados:
                 agrupados[key] = {
-                    's': f.symbol,
-                    'side': f.side.upper(),
+                    's': symbol,
+                    'side': side,
                     'q': 0.0,
                     'total_val': 0.0,
-                    'time': f.transaction_time.isoformat()
+                    'time': t.isoformat()
                 }
             
-            agrupados[key]['q'] += float(f.qty)
-            agrupados[key]['total_val'] += float(f.qty) * float(f.price)
+            agrupados[key]['q'] += qty
+            agrupados[key]['total_val'] += qty * price
 
         res = []
         buys = {}
+        # Ordenar de antiguo a nuevo para casar P/L
         sorted_keys = sorted(agrupados.keys(), key=lambda x: agrupados[x]['time'])
         
         for k in sorted_keys:
             item = agrupados[k]
-            avg_price = item['total_val'] / item['q']
+            avg_p = item['total_val'] / item['q']
             
             if item['side'] == 'BUY':
-                buys[item['s']] = avg_price
+                buys[item['s']] = avg_p
             elif item['side'] == 'SELL':
                 entry = buys.get(item['s'])
-                pl = (avg_price - entry) * item['q'] if entry else 0
+                pl = (avg_p - entry) * item['q'] if entry else 0
                 res.insert(0, {
                     's': item['s'],
                     'side': 'SELL',
                     'q': round(item['q'], 4),
-                    'p': round(avg_price, 4),
+                    'p': round(avg_p, 4),
                     'entry': round(entry, 4) if entry else None,
                     'pl': round(pl, 2),
                     'time': item['time']
                 })
         
-        # Si aún no hay nada en res (quizás solo hay compras abiertas), 
-        # devolvemos los agrupados directamente para que al menos se vea actividad
+        # Fallback: Si no hay ventas casadas, mostrar todos los movimientos agrupados recientes
         if not res:
             return [{ 
                 's': i['s'], 
@@ -137,7 +151,7 @@ def obtener_posiciones_cerradas():
             
         return res[:10]
     except Exception as e:
-        print(f"Error en historial de cerradas consolidado: {e}")
+        print(f"Error en historial de cerradas revisado: {e}")
         return []
 
 def obtener_ordenes_activas():
