@@ -529,4 +529,75 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch(e) {}
     }
   }, 2000);
+
+  // Initial performance chart load
+  refreshPerformanceChart();
 });
+
+// ── Performance Chart (Capital Evolution) ────────────────────
+let currentPerformancePeriod = 'MONTH';
+let perfChart = null;
+let perfSeries = null;
+
+async function setPerformancePeriod(period) {
+  currentPerformancePeriod = period;
+  const btns = document.querySelectorAll('#tfSelector .tf-btn');
+  btns.forEach(b => {
+    b.classList.toggle('active', b.getAttribute('onclick')?.includes(period));
+  });
+  refreshPerformanceChart();
+}
+window.setPerformancePeriod = setPerformancePeriod; // Make global for onclick
+
+async function refreshPerformanceChart() {
+  try {
+    const res = await fetch(`/api/portfolio_history?period=${currentPerformancePeriod}`);
+    const data = await res.json();
+    if (data.error) return;
+    renderPerformanceChart(data);
+  } catch (e) {}
+}
+
+function renderPerformanceChart(data) {
+  const el = document.getElementById('performanceChart');
+  if (!el) return;
+
+  if (!perfChart) {
+    perfChart = LightweightCharts.createChart(el, {
+      width: el.clientWidth,
+      height: 300,
+      layout: {
+        background: { color: 'transparent' },
+        textColor: '#64748b',
+        fontSize: 11,
+      },
+      grid: {
+        vertLines: { color: 'rgba(100, 120, 180, 0.05)' },
+        horzLines: { color: 'rgba(100, 120, 180, 0.05)' },
+      },
+      timeScale: {
+        borderColor: 'rgba(100, 120, 180, 0.1)',
+        timeVisible: true,
+      },
+    });
+
+    perfSeries = perfChart.addAreaSeries({
+      lineColor: '#818cf8',
+      topColor: 'rgba(129, 140, 248, 0.3)',
+      bottomColor: 'rgba(129, 140, 248, 0)',
+      lineWidth: 2,
+    });
+
+    new ResizeObserver(() => {
+      perfChart.applyOptions({ width: el.clientWidth });
+    }).observe(el);
+  }
+
+  const formattedData = data.map(d => ({
+    time: d.time,
+    value: d.value
+  })).sort((a, b) => a.time - b.time);
+
+  perfSeries.setData(formattedData);
+  perfChart.timeScale().fitContent();
+}

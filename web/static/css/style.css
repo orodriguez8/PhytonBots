@@ -578,3 +578,45 @@ td.mono { font-family: var(--mono); font-size: 0.75rem; }
   .topbar-right { gap: 0.5rem; }
   .logo-version { display: none; }
 }
+
+/* ── Performance Chart ─────────────────────────────────── */
+.performance-panel {
+  margin-bottom: 1rem;
+}
+
+.timeframe-selector {
+  display: flex;
+  gap: 0.3rem;
+  background: var(--card-2);
+  padding: 3px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+}
+
+.tf-btn {
+  background: transparent;
+  border: none;
+  color: var(--dim);
+  padding: 0.25rem 0.6rem;
+  font-size: 0.6rem;
+  font-weight: 700;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-transform: uppercase;
+}
+
+.tf-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tf-btn.active {
+  background: var(--primary);
+  color: white;
+  box-shadow: var(--glow-p);
+}
+
+.chart-container {
+  width: 100%;
+}

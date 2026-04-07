@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
@@ -102,6 +103,23 @@
                     <span class="stat-label">Provider</span>
                     <span class="stat-value" id="providerLabel" style="font-size:1rem">—</span>
                 </div>
+            </div>
+
+            <!-- Portfolio Performance Chart -->
+            <div class="panel performance-panel">
+                <div class="panel-header">
+                    <span class="panel-title">
+                        <i data-lucide="line-chart" style="width:14px;height:14px"></i>
+                        Portfolio Performance
+                    </span>
+                    <div class="timeframe-selector" id="tfSelector">
+                        <button class="tf-btn" onclick="setPerformancePeriod('DAY')">Day</button>
+                        <button class="tf-btn active" onclick="setPerformancePeriod('MONTH')">Month</button>
+                        <button class="tf-btn" onclick="setPerformancePeriod('YEAR')">Year</button>
+                        <button class="tf-btn" onclick="setPerformancePeriod('ALL')">All</button>
+                    </div>
+                </div>
+                <div id="performanceChart" class="chart-container" style="height: 300px; padding: 1rem 0;"></div>
             </div>
 
             <!-- Open Positions -->
