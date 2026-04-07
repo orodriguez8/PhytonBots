@@ -200,160 +200,97 @@ def trading_loop(socketio=None):
                     )
 
                     if LIVE_ENABLED:
+                        # 1. Pending Order Check (Critical to prevent spam)
+                        all_pending = get_orders()
+                        has_pending = any(o['symbol'].upper() == norm_sym for o in all_pending)
+                        
+                        if has_pending:
+                            logger.warning(f"⚠️ {symbol}: Skip cycle, order already pending.")
+                            continue
+
+                        # 2. Position Handling
                         if current_pos:
                             is_long = current_pos['direccion'] == 'LONG'
-                            entry_price = float(current_pos['precio_medio'])
-                            atr_val = float(bot.indicadores['atr'].iloc[-1])
+                            entry_p = float(current_pos['precio_medio'])
+                            atr_v = float(bot.indicadores['atr'].iloc[-1])
 
-                            # Synthetic SL/TP Check
-                            tmp_gestion = calcular_gestion_riesgo(
-                                current_pos['direccion'], entry_price, atr_val, 
-                                is_crypto=is_crypto
-                            )
+                            # SL/TP Check
+                            ges_tmp = calcular_gestion_riesgo(current_pos['direccion'], entry_p, atr_v, is_crypto=is_crypto)
                             sl_hit = False
                             tp_hit = False
                             
-                            if tmp_gestion:
-                                sl_price = tmp_gestion.get('stop_loss')
-                                tp_price = tmp_gestion.get('take_profit')
+                            if ges_tmp:
                                 if is_long:
-                                    if price <= sl_price: sl_hit = True
-                                    if price >= tp_price: tp_hit = True
+                                    if price <= ges_tmp['stop_loss']: sl_hit = True
+                                    if price >= ges_tmp['take_profit']: tp_hit = True
                                 else: # SHORT
-                                    if price >= sl_price: sl_hit = True
-                                    if price <= tp_price: tp_hit = True
+                                    if price >= ges_tmp['stop_loss']: sl_hit = True
+                                    if price <= ges_tmp['take_profit']: tp_hit = True
 
-                            signal_close = (
-                                (dir_ in ['NEUTRAL', 'NO_TRADE'])
-                                or (is_long and dir_ == 'SHORT')
-                                or (not is_long and dir_ == 'LONG')
-                            )
+                            signal_close = (dir_ in ['NEUTRAL', 'NO_TRADE']) or \
+                                           (is_long and dir_ == 'SHORT') or \
+                                           (not is_long and dir_ == 'LONG')
 
-                            should_close = signal_close or sl_hit or tp_hit
-
-                            # Verificación de órdenes pendientes para evitar duplicados (Spam)
-                            all_pending = get_orders()
-                            pending_order = next(
-                                (o for o in all_pending if o['symbol'].upper() == norm_sym),
-                                None
-                            )
-
-                            if pending_order:
-                                logger.warning(f"⚠️ {symbol}: Ya hay una orden pendiente ({pending_order['status']}). Saltando...")
-                                push_event('warn', f"{symbol}: Order already pending ({pending_order['status']})", socketio)
-                                continue
-
-                            if should_close:
-                                market_name = 'ALPACA' if IS_ALPACA else CCXT_EXCHANGE_ID.upper()
+                            if signal_close or sl_hit or tp_hit:
                                 reason_close = f"Signal {dir_}"
                                 if sl_hit: reason_close = "STOP LOSS HIT"
                                 if tp_hit: reason_close = "TAKE PROFIT HIT"
 
-                                logger.info(f"🛑 CERRANDO {symbol} ({reason_close}) en {market_name}")
-                                push_event('order', f"CLOSING {symbol} ({reason_close}) on {market_name}", socketio)
+                                logger.info(f"🛑 Closing {symbol}: {reason_close}")
+                                push_event('order', f"Closing {symbol} ({reason_close})", socketio)
                                 
                                 try:
                                     if IS_ALPACA:
-                                        # Cancelar órdenes primero para evitar "insufficient qty"
                                         cancel_orders_for_symbol(symbol)
                                         alpaca_client.cerrar_posicion(symbol)
                                     else:
-                                        side_close = 'sell' if is_long else 'buy'
-                                        place_order(symbol, current_pos['unidades'], side_close)
-                                except Exception as e_close:
-                                    logger.error(f"Error cerrando {symbol}: {e_close}")
-                                    push_event('error', f"Error processing {symbol}: {e_close}", socketio)
+                                        place_order(symbol, current_pos['unidades'], 'sell' if is_long else 'buy')
+                                    
+                                    state.BOT_HISTORY.insert(0, {
+                                        'time': datetime.datetime.now().isoformat(),
+                                        'sym': symbol, 'type': 'CLOSE', 'price': price, 'reason': reason_close
+                                    })
+                                except Exception as e_c:
+                                    logger.error(f"Error closing {symbol}: {e_c}")
 
-                                state.BOT_HISTORY.insert(0, {
-                                    'time': datetime.datetime.now().isoformat(),
-                                    'sym': symbol,
-                                    'type': 'CLOSE',
-                                    'price': safe_float(price),
-                                    'reason': reason_close,
-                                })
+                        # 3. New Entry Handling
+                        elif dir_ in ['LONG', 'SHORT']:
+                            if dir_ == 'SHORT' and IS_ALPACA and is_crypto:
+                                logger.warning(f"⚠️ SHORT ignored for {symbol} (Alpaca Crypto)")
+                                continue
 
-                        elif dir_ == 'LONG':
-                            side = 'buy'
+                            side = 'buy' if dir_ == 'LONG' else 'sell'
                             ges = dec.get('gestion', {})
                             raw_qty = float(ges.get('tamano_posicion', 0))
                             sl = ges.get('stop_loss')
                             tp = ges.get('take_profit')
 
-                            safe_bp_cap = buying_power * 0.10
-                            if (raw_qty * price) > safe_bp_cap:
-                                raw_qty = safe_bp_cap / price
+                            # Limit to 10% equity per trade
+                            max_val = buying_power * 0.10
+                            if (raw_qty * price) > max_val:
+                                raw_qty = max_val / price
 
-                            qty = round(raw_qty, 4)
+                            qty = int(raw_qty) if (IS_ALPACA and dir_ == 'SHORT') else round(raw_qty, 4)
+
                             if qty > 0:
                                 try:
-                                    market_name = 'ALPACA' if IS_ALPACA else CCXT_EXCHANGE_ID.upper()
-                                    logger.info(f"🚀 ABRIENDO: {symbol} x{qty} {side.upper()} en {market_name} (SL: {sl}, TP: {tp})")
-                                    push_event('order', f"OPENING {symbol} x{qty} {side.upper()} on {market_name}", socketio)
+                                    logger.info(f"🚀 Opening {dir_} for {symbol} x{qty}")
+                                    push_event('order', f"Opening {dir_} {symbol} x{qty}", socketio)
                                     place_order(symbol, qty, side, tp=tp, sl=sl)
                                     state.BOT_HISTORY.insert(0, {
                                         'time': datetime.datetime.now().isoformat(),
-                                        'sym': symbol,
-                                        'type': f"OPEN {dir_}",
-                                        'price': safe_float(price),
-                                        'reason': 'Executed',
+                                        'sym': symbol, 'type': f"OPEN {dir_}", 'price': price, 'reason': 'Strategy executed'
                                     })
                                     buying_power -= (qty * price)
-                                except Exception as e_order:
-                                    market_name = 'ALPACA' if IS_ALPACA else CCXT_EXCHANGE_ID.upper()
-                                    logger.error(f"❌ Error {market_name} {symbol}: {e_order}")
-                                    push_event('error', f"Order failed {symbol}: {e_order}", socketio)
-                        elif dir_ == 'SHORT':
-                            if IS_ALPACA and is_crypto:
-                                logger.warning(f"⚠️ SHORT ignored for {symbol}: Alpaca does not support crypto shorting.")
-                                push_event('warn', f"Short ignored: {symbol} (Alpaca Crypto)", socketio)
-                                side = None
-                            else:
-                                side = 'sell'
-                                ges = dec.get('gestion', {})
-                                raw_qty = float(ges.get('tamano_posicion', 0))
-                                sl = ges.get('stop_loss')
-                                tp = ges.get('take_profit')
+                                except Exception as e_o:
+                                    logger.error(f"Order failed for {symbol}: {e_o}")
+                                    push_event('error', f"Order failed {symbol}: {e_o}", socketio)
 
-                                # BP check for shorting
-                                safe_bp_cap = buying_power * 0.10
-                                if (raw_qty * price) > safe_bp_cap:
-                                    raw_qty = safe_bp_cap / price
-
-                                # Force whole shares for shorting in Alpaca (to avoid error)
-                                if IS_ALPACA:
-                                    qty = int(raw_qty)
-                                else:
-                                    qty = round(raw_qty, 4)
-
-                                if qty > 0 and side:
-                                    try:
-                                        market_name = 'ALPACA' if IS_ALPACA else CCXT_EXCHANGE_ID.upper()
-                                        logger.info(f"🚀 ABRIENDO SHORT: {symbol} x{qty} en {market_name} (SL: {sl}, TP: {tp})")
-                                        push_event('order', f"OPENING SHORT {symbol} x{qty} on {market_name}", socketio)
-                                        place_order(symbol, qty, side, tp=tp, sl=sl)
-                                        state.BOT_HISTORY.insert(0, {
-                                            'time': datetime.datetime.now().isoformat(),
-                                            'sym': symbol,
-                                            'type': f"OPEN {dir_}",
-                                            'price': safe_float(price),
-                                            'reason': 'Executed',
-                                        })
-                                        buying_power -= (qty * price)
-                                    except Exception as e_order:
-                                        market_name = 'ALPACA' if IS_ALPACA else CCXT_EXCHANGE_ID.upper()
-                                        logger.error(f"❌ Error {market_name} {symbol}: {e_order}")
-                                        push_event('error', f"Order failed {symbol}: {e_order}", socketio)
-
-                    # History Logging (record the scan result if no order was just placed)
-                    # We check if the last item is already this symbol/time to avoid duplicates
+                    # 4. History Update (Scans)
                     if dir_ not in ['NEUTRAL', 'NO_TRADE']:
-                        hist_type = f"{dir_}" if LIVE_ENABLED else f"SIM {dir_}"
                         state.BOT_HISTORY.insert(0, {
                             'time': datetime.datetime.now().isoformat(),
-                            'sym': symbol,
-                            'type': hist_type,
-                            'price': safe_float(price),
-                            'reason': reason,
+                            'sym': symbol, 'type': f"{dir_}", 'price': price, 'reason': reason
                         })
 
                     if len(state.BOT_HISTORY) > 100:

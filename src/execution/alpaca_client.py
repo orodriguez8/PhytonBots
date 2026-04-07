@@ -78,18 +78,13 @@ def obtener_posiciones_cerradas():
     """
     try:
         api = _get_api()
-        # Buscamos 'FILL' (ejecuciones)
+        # Buscamos 'FILL' (ejecuciones) de los últimos días
         activities = api.get_activities(activity_types='FILL')
         
-        # Mapa para agrupar por símbolo y tipo de operación (BUY/SELL) aproximando por hora
-        # Esto ayuda a consolidar órdenes que se llenaron en varios pedazos
         agrupados = {}
-        
         for f in activities:
             if not (hasattr(f, 'price') and hasattr(f, 'qty')): continue
             
-            # Creamos una clave única: Símbolo + Lado + Hora/Minuto aproximado
-            # (Si se cerraron al mismo tiempo, son la misma operación para el usuario)
             time_key = f.transaction_time.strftime('%Y-%m-%d %H:%M')
             key = f"{f.symbol}_{f.side}_{time_key}"
             
@@ -105,11 +100,8 @@ def obtener_posiciones_cerradas():
             agrupados[key]['q'] += float(f.qty)
             agrupados[key]['total_val'] += float(f.qty) * float(f.price)
 
-        # Ahora procesamos los agrupados para calcular el histórico con P/L
         res = []
-        buys = {} # Para rastrear el costo de entrada
-        
-        # Procesamos de antiguo a nuevo para casar compras con ventas
+        buys = {}
         sorted_keys = sorted(agrupados.keys(), key=lambda x: agrupados[x]['time'])
         
         for k in sorted_keys:
@@ -118,20 +110,21 @@ def obtener_posiciones_cerradas():
             
             if item['side'] == 'BUY':
                 buys[item['s']] = avg_price
-            elif item['side'] == 'SELL' and item['s'] in buys:
-                entry = buys[item['s']]
-                pl = (avg_price - entry) * item['q']
+            elif item['side'] == 'SELL':
+                entry = buys.get(item['s'])
+                pl = (avg_price - entry) * item['q'] if entry else 0
                 res.insert(0, {
                     's': item['s'],
                     'side': 'SELL',
                     'q': round(item['q'], 4),
                     'p': round(avg_price, 4),
-                    'entry': round(entry, 4),
+                    'entry': round(entry, 4) if entry else None,
                     'pl': round(pl, 2),
                     'time': item['time']
                 })
         
-        # Si no hay ventas casadas, mostrar los últimos movimientos agrupados
+        # Si aún no hay nada en res (quizás solo hay compras abiertas), 
+        # devolvemos los agrupados directamente para que al menos se vea actividad
         if not res:
             return [{ 
                 's': i['s'], 
@@ -140,7 +133,7 @@ def obtener_posiciones_cerradas():
                 'p': round(i['total_val']/i['q'], 4), 
                 'pl': 0, 
                 'time': i['time'] 
-            } for i in list(agrupados.values())[:10]]
+            } for i in sorted(agrupados.values(), key=lambda x: x['time'], reverse=True)[:10]]
             
         return res[:10]
     except Exception as e:
