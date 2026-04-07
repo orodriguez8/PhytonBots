@@ -20,6 +20,7 @@ const S = {
   reconnectAttempt: 0,
   maxReconnect: 50,
   pollFallbackId: null,
+  securityEnabled: false,
 };
 
 // ── Socket.IO Connection with Auto-Reconnect ──────────────
@@ -179,6 +180,7 @@ function updateDashboard(data) {
     openPlEl.className = 'stat-value ' + (openPlTotal >= 0 ? 'up' : 'down');
   }
   updateIfChanged('providerLabel', data.mode || '—');
+  S.securityEnabled = data.security_enabled || false;
 
   // 6. Watchlist (only if changed)
   const watchStr = JSON.stringify(data.summary);
@@ -454,16 +456,32 @@ function escapeHtml(s) {
 
 // ═══ Actions ══════════════════════════════════════════════
 async function toggleBot() {
+  let pwd = null;
+  if (S.securityEnabled) {
+    pwd = prompt('Enter Bot Security PIN:');
+    if (!pwd) return;
+  }
+
   try {
-    if (socket && S.connected) {
-      socket.emit('toggle_bot');
-    } else {
-      const res = await fetch('/api/toggle', { method: 'POST' });
-      if (!res.ok) throw new Error();
-      const d = await res.json();
-      S.auto = d.state;
+    const body = {};
+    if (pwd) body.password = pwd;
+
+    const res = await fetch('/api/toggle', { 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    
+    if (res.status === 401) {
+      alert('Invalid PIN. Action rejected.');
+      addConsoleLog('error', 'Auth failed: Invalid PIN');
+      return;
     }
-    addConsoleLog('info', `Bot ${S.auto ? 'stopping' : 'starting'}...`);
+    
+    if (!res.ok) throw new Error('Update failed');
+    const d = await res.json();
+    S.auto = d.state;
+    addConsoleLog('info', `Bot toggled manually → ${S.auto ? 'ACTIVE' : 'STANDBY'}`);
   } catch (e) {
     addConsoleLog('error', 'Toggle failed: ' + e.message);
   }
@@ -471,8 +489,28 @@ async function toggleBot() {
 
 async function cancelAllOrders() {
   if (!confirm('Cancel all pending orders?')) return;
+  
+  let pwd = null;
+  if (S.securityEnabled) {
+    pwd = prompt('Enter Bot Security PIN to confirm cancellation:');
+    if (!pwd) return;
+  }
+
   try {
-    const res = await fetch('/api/cancel_all', { method: 'POST' });
+    const body = {};
+    if (pwd) body.password = pwd;
+
+    const res = await fetch('/api/cancel_all', { 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    
+    if (res.status === 401) {
+      alert('Invalid PIN. Action rejected.');
+      return;
+    }
+
     const data = await res.json();
     if (data.ok) {
       // addConsoleLog handled by server broadcast

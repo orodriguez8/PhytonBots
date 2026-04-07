@@ -13,6 +13,10 @@ load_dotenv()
 # sin tocar el resto del código.
 # =============================================================================
 
+# --- Seguridad ---
+# Si se establece una contraseña, el dashboard la solicitará para Start/Stop
+BOT_PASSWORD        = os.getenv('BOT_PASSWORD', '').strip()
+
 # --- Capital y Riesgo ---
 CAPITAL_INICIAL = 10_000.0       # Capital inicial en USD
 RIESGO_POR_OPERACION = 0.015      # Máximo 1.5% del capital por operación (Conservative)

@@ -8,6 +8,7 @@ from src.bot.engine import (
     state, push_event, build_summary, cancel_all_orders, 
     LIVE_ENABLED, IS_ALPACA, CCXT_EXCHANGE_ID
 )
+from src.core.config import BOT_PASSWORD
 
 def build_api_summary():
     # Helper to call engine's build_summary with fallback
@@ -23,6 +24,12 @@ def home():
 
 @app.route('/api/toggle', methods=['POST'])
 def toggle():
+    # Verificar contraseña si está configurada
+    if BOT_PASSWORD:
+        user_pwd = request.json.get('password', '')
+        if user_pwd != BOT_PASSWORD:
+            return jsonify({'ok': False, 'error': 'Invalid PIN'}), 401
+    
     state.AUTO_TRADING_ACTIVE = not state.AUTO_TRADING_ACTIVE
     push_event('info', f"Bot toggled → {'ACTIVE' if state.AUTO_TRADING_ACTIVE else 'STANDBY'}", socketio)
     return jsonify({'ok': True, 'state': state.AUTO_TRADING_ACTIVE})
@@ -36,6 +43,12 @@ def summary():
 
 @app.route('/api/cancel_all', methods=['POST'])
 def cancel_all():
+    # Verificar contraseña si está configurada
+    if BOT_PASSWORD:
+        user_pwd = request.json.get('password', '')
+        if user_pwd != BOT_PASSWORD:
+            return jsonify({'ok': False, 'error': 'Invalid PIN'}), 401
+
     if LIVE_ENABLED:
         try:
             cancel_all_orders()
@@ -50,7 +63,7 @@ def cancel_all():
             return jsonify({'ok': True})
         except Exception:
             pass
-    return jsonify({'ok': False, 'error': 'No activo'})
+    return jsonify({'ok': False, 'error': 'No activo o error'})
 
 @app.route('/api/test_alpaca')
 def test_alpaca():

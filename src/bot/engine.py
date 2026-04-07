@@ -9,7 +9,7 @@ from src.bot.analyzer_crypto import CryptoAnalyzer
 from src.core.config import (
     CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS, WATCHLIST,
     TRADING_MODE_CRYPTO, ALPACA_API_KEY, ALPACA_SECRET_KEY,
-    CCXT_API_KEY, CCXT_EXCHANGE_ID
+    CCXT_API_KEY, CCXT_EXCHANGE_ID, BOT_PASSWORD
 )
 from src.core.health import get_circuit_breaker_status
 from src.risk.management import calcular_gestion_riesgo
@@ -111,6 +111,7 @@ def build_summary():
             'pos': [],
             'closed': [],
             'orders': [],
+            'security_enabled': bool(BOT_PASSWORD),
         }
         if LIVE_ENABLED:
             acc = get_account()
