@@ -290,14 +290,9 @@ def trading_loop(socketio=None):
                                     logger.error(f"❌ Error {market_name} {symbol}: {e_order}")
                                     push_event('error', f"Order failed {symbol}: {e_order}", socketio)
                         elif dir_ == 'SHORT':
-                            is_fractional = float(dec.get('gestion', {}).get('tamano_posicion', 0)) % 1 != 0
                             if IS_ALPACA and is_crypto:
                                 logger.warning(f"⚠️ SHORT ignored for {symbol}: Alpaca does not support crypto shorting.")
                                 push_event('warn', f"Short ignored: {symbol} (Alpaca Crypto)", socketio)
-                                side = None
-                            elif IS_ALPACA and is_fractional:
-                                logger.warning(f"⚠️ SHORT ignored for {symbol}: Alpaca does not support fractional shorting.")
-                                push_event('warn', f"Short ignored: {symbol} (Alpaca Fractional)", socketio)
                                 side = None
                             else:
                                 side = 'sell'
@@ -311,7 +306,12 @@ def trading_loop(socketio=None):
                                 if (raw_qty * price) > safe_bp_cap:
                                     raw_qty = safe_bp_cap / price
 
-                                qty = round(raw_qty, 4)
+                                # Force whole shares for shorting in Alpaca (to avoid error)
+                                if IS_ALPACA:
+                                    qty = int(raw_qty)
+                                else:
+                                    qty = round(raw_qty, 4)
+
                                 if qty > 0 and side:
                                     try:
                                         market_name = 'ALPACA' if IS_ALPACA else CCXT_EXCHANGE_ID.upper()
