@@ -127,6 +127,8 @@ def build_summary():
                     'c': safe_float(p.get('precio_actual', 0)),
                     'p': safe_float(p['pl']),
                     'pct': safe_float(p.get('pl_pct', 0)),
+                    'v': safe_float(p.get('valor_total', 0)),
+                    't': p.get('fecha_entrada', None)
                 } for p in raw_pos]
 
                 total_open_pl = sum(p['p'] for p in data['pos'])
@@ -198,7 +200,7 @@ def trading_loop(socketio=None):
                     if LIVE_ENABLED:
                         if current_pos:
                             is_long = current_pos['direccion'] == 'LONG'
-                            entry_price = float(current_pos['e'])
+                            entry_price = float(current_pos['precio_medio'])
                             atr_val = float(bot.indicadores['atr'].iloc[-1])
 
                             # Synthetic SL/TP Check

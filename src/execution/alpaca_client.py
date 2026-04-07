@@ -42,8 +42,19 @@ def obtener_posiciones_abiertas():
         api = _get_api()
         positions = api.list_positions()
         
+        # Intentamos obtener actividades recientes para aproximar la fecha de entrada
+        fills = {}
+        try:
+            activities = api.get_activities(activity_types='FILL')
+            for f in activities:
+                if f.symbol not in fills:
+                    fills[f.symbol] = f.transaction_time
+        except:
+            pass
+
         res = []
         for p in positions:
+            entry_time = fills.get(p.symbol)
             res.append({
                 'instrumento': p.symbol,
                 'direccion': 'LONG' if float(p.qty) > 0 else 'SHORT',
@@ -52,6 +63,8 @@ def obtener_posiciones_abiertas():
                 'precio_actual': float(p.current_price),
                 'pl': float(p.unrealized_pl),
                 'pl_pct': float(p.unrealized_plpc) * 100,
+                'valor_total': float(p.cost_basis),
+                'fecha_entrada': entry_time.isoformat() if entry_time else None
             })
         return res
     except Exception as e:
@@ -148,23 +161,24 @@ def colocar_orden_mercado(symbol, qty, side, take_profit=None, stop_loss=None):
         is_crypto = any(q in symbol.upper() for q in ['USD', 'USDT', 'USDC', '/'])
         precision = 8 if is_crypto else 2
         
-        # Alpaca does NOT support advanced order classes (bracket, oco, etc) for Crypto
+        # Fractional orders MUST be 'day' orders and 'simple' in Alpaca
+        is_fractional = float(qty) != int(float(qty))
+        tif = 'day' if (is_fractional and not is_crypto) else 'gtc'
+        
+        # Alpaca does NOT support advanced order classes (bracket, oco, etc) for Crypto OR Fractional
         order_class = 'simple'
         tp_dict = None
         sl_dict = None
         
-        if (take_profit or stop_loss) and not is_crypto:
+        if (take_profit or stop_loss) and not is_crypto and not is_fractional:
             order_class = 'bracket'
             if take_profit:
                 tp_dict = dict(limit_price=round(float(take_profit), precision))
             if stop_loss:
                 sl_dict = dict(stop_price=round(float(stop_loss), precision))
-        elif (take_profit or stop_loss) and is_crypto:
-            print(f"INFO: SL/TP ignorado para {symbol} (Alpaca no permite bracket orders en Crypto)")
-
-        # Fractional orders MUST be 'day' orders in Alpaca
-        is_fractional = float(qty) != int(float(qty))
-        tif = 'day' if (is_fractional and not is_crypto) else 'gtc'
+        elif (take_profit or stop_loss) and (is_crypto or is_fractional):
+            reason_skip = "Crypto" if is_crypto else "Fractional"
+            print(f"INFO: SL/TP ignorado para {symbol} (Alpaca no permite bracket orders en {reason_skip} assets)")
 
         order = api.submit_order(
             symbol=symbol.replace('/', ''), # Alpaca crypto icons don't like '/'

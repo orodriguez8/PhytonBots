@@ -277,11 +277,13 @@ function renderPositions(pos) {
       <td style="font-weight:700">${p.s}</td>
       <td><span class="badge ${p.d === 'LONG' ? 'up' : 'down'}">${p.d === 'LONG' ? 'Buy' : 'Sell'}</span></td>
       <td class="mono">${p.q}</td>
+      <td class="mono">$${formatNum(p.v || 0)}</td>
       <td class="mono">$${p.e}</td>
       <td class="mono">$${p.c}</td>
       <td class="${p.p >= 0 ? 'up' : 'down'}" style="font-weight:700;font-family:var(--mono)">
         ${p.p >= 0 ? '+' : ''}$${p.p.toFixed(2)} <span style="opacity:0.6;font-size:0.7rem">(${p.pct.toFixed(2)}%)</span>
       </td>
+      <td style="color:var(--dim-2);font-size:0.75rem;white-space:nowrap">${formatTime(p.t)}</td>
     </tr>
   `).join('');
 
@@ -500,7 +502,12 @@ function formatTime(s) {
   try {
     const d = new Date(s);
     if (isNaN(d.getTime())) return s;
-    return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const timeStr = d.toLocaleTimeString('es-ES', { hour12: false, hour: '2-digit', minute: '2-digit' });
+    if (isToday) return timeStr;
+    const dateStr = d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+    return `${dateStr} ${timeStr}`;
   } catch (e) { return s; }
 }
 
