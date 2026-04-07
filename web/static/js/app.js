@@ -475,7 +475,7 @@ async function cancelAllOrders() {
     const res = await fetch('/api/cancel_all', { method: 'POST' });
     const data = await res.json();
     if (data.ok) {
-      addConsoleLog('order', 'All orders cancelled.');
+      // addConsoleLog handled by server broadcast
     } else {
       addConsoleLog('error', 'Cancel failed: ' + (data.error || 'unknown'));
     }

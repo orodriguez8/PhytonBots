@@ -90,6 +90,7 @@ def cancel_orders_for_symbol(symbol):
         for o in orders:
             api.cancel_order(o.id)
             logger.info(f"Canceled pending order {o.id} for {symbol} before closing.")
+        time.sleep(0.5) # Give Alpaca a moment to process the cancellations
     except Exception as e:
         logger.error(f"Error canceling orders for {symbol}: {e}")
 
@@ -289,9 +290,14 @@ def trading_loop(socketio=None):
                                     logger.error(f"❌ Error {market_name} {symbol}: {e_order}")
                                     push_event('error', f"Order failed {symbol}: {e_order}", socketio)
                         elif dir_ == 'SHORT':
+                            is_fractional = float(dec.get('gestion', {}).get('tamano_posicion', 0)) % 1 != 0
                             if IS_ALPACA and is_crypto:
                                 logger.warning(f"⚠️ SHORT ignored for {symbol}: Alpaca does not support crypto shorting.")
                                 push_event('warn', f"Short ignored: {symbol} (Alpaca Crypto)", socketio)
+                                side = None
+                            elif IS_ALPACA and is_fractional:
+                                logger.warning(f"⚠️ SHORT ignored for {symbol}: Alpaca does not support fractional shorting.")
+                                push_event('warn', f"Short ignored: {symbol} (Alpaca Fractional)", socketio)
                                 side = None
                             else:
                                 side = 'sell'
