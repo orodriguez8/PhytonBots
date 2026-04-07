@@ -73,49 +73,78 @@ def obtener_posiciones_abiertas():
 
 def obtener_posiciones_cerradas():
     """
-    Obtiene el historial de posiciones cerradas recientemente con P/L realizado.
+    Obtiene el historial de posiciones cerradas recientemente agrupando 'fills' 
+    para evitar duplicados visuales y mostrar el P/L real por operación.
     """
     try:
         api = _get_api()
         # Buscamos 'FILL' (ejecuciones)
         activities = api.get_activities(activity_types='FILL')
         
-        # Filtrar solo las que tienen precio y cantidad
-        fills = [f for f in activities if hasattr(f, 'price') and hasattr(f, 'qty')]
+        # Mapa para agrupar por símbolo y tipo de operación (BUY/SELL) aproximando por hora
+        # Esto ayuda a consolidar órdenes que se llenaron en varios pedazos
+        agrupados = {}
         
-        res = []
-        # Mapa simple para recordar el "cost basis" aproximado (solo para el historial visual)
-        buys = {} # symbol -> last_buy_price
-        
-        for f in reversed(fills): # Del más antiguo al más nuevo para rastrear buys
-            sym = f.symbol
-            price = float(f.price)
-            qty = float(f.qty)
-            side = f.side.upper()
+        for f in activities:
+            if not (hasattr(f, 'price') and hasattr(f, 'qty')): continue
             
-            if side == 'BUY':
-                buys[sym] = price
-            elif side == 'SELL' and sym in buys:
-                # Si vendemos y tenemos un precio de compra guardado, calculamos P/L
-                entry = buys[sym]
-                pl = (price - entry) * qty
-                res.insert(0, {
-                    's': sym,
-                    'side': 'SELL',
-                    'q': qty,
-                    'p': price,
-                    'entry': entry,
-                    'pl': round(pl, 2),
+            # Creamos una clave única: Símbolo + Lado + Hora/Minuto aproximado
+            # (Si se cerraron al mismo tiempo, son la misma operación para el usuario)
+            time_key = f.transaction_time.strftime('%Y-%m-%d %H:%M')
+            key = f"{f.symbol}_{f.side}_{time_key}"
+            
+            if key not in agrupados:
+                agrupados[key] = {
+                    's': f.symbol,
+                    'side': f.side.upper(),
+                    'q': 0.0,
+                    'total_val': 0.0,
                     'time': f.transaction_time.isoformat()
+                }
+            
+            agrupados[key]['q'] += float(f.qty)
+            agrupados[key]['total_val'] += float(f.qty) * float(f.price)
+
+        # Ahora procesamos los agrupados para calcular el histórico con P/L
+        res = []
+        buys = {} # Para rastrear el costo de entrada
+        
+        # Procesamos de antiguo a nuevo para casar compras con ventas
+        sorted_keys = sorted(agrupados.keys(), key=lambda x: agrupados[x]['time'])
+        
+        for k in sorted_keys:
+            item = agrupados[k]
+            avg_price = item['total_val'] / item['q']
+            
+            if item['side'] == 'BUY':
+                buys[item['s']] = avg_price
+            elif item['side'] == 'SELL' and item['s'] in buys:
+                entry = buys[item['s']]
+                pl = (avg_price - entry) * item['q']
+                res.insert(0, {
+                    's': item['s'],
+                    'side': 'SELL',
+                    'q': round(item['q'], 4),
+                    'p': round(avg_price, 4),
+                    'entry': round(entry, 4),
+                    'pl': round(pl, 2),
+                    'time': item['time']
                 })
         
-        # Si no hay ventas emparejadas, mostrar rellenos sueltos
+        # Si no hay ventas casadas, mostrar los últimos movimientos agrupados
         if not res:
-            return [{ 's': f.symbol, 'side': f.side.upper(), 'q': float(f.qty), 'p': float(f.price), 'pl': 0, 'time': f.transaction_time.isoformat() } for f in fills[:10]]
+            return [{ 
+                's': i['s'], 
+                'side': i['side'], 
+                'q': round(i['q'], 4), 
+                'p': round(i['total_val']/i['q'], 4), 
+                'pl': 0, 
+                'time': i['time'] 
+            } for i in list(agrupados.values())[:10]]
             
         return res[:10]
     except Exception as e:
-        print(f"Error en historial de cerradas: {e}")
+        print(f"Error en historial de cerradas consolidado: {e}")
         return []
 
 def obtener_ordenes_activas():
