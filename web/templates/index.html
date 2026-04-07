@@ -232,6 +232,26 @@
         </main>
     </div>
 
+    <!-- ═══ Custom Auth Modal ═══════════════════════════════════ -->
+    <div id="authModal" class="modal-overlay" style="display:none">
+        <div class="modal-content">
+            <div class="modal-header">
+                <i data-lucide="shield-check" class="modal-icon"></i>
+                <h3 id="modalTitle">Security Access</h3>
+            </div>
+            <div class="modal-body">
+                <p id="modalMsg">Please enter your PIN to continue.</p>
+                <div class="input-group">
+                    <input type="password" id="modalPin" placeholder="••••" autofocus maxlength="10">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeAuthModal(null)">Cancel</button>
+                <button class="btn-primary" onclick="submitAuthModal()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     <script>lucide.createIcons();</script>
 </body>

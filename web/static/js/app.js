@@ -23,6 +23,43 @@ const S = {
   securityEnabled: false,
 };
 
+// ── Auth Modal Logic ──────────────────────────────────────
+let authPromiseResolve = null;
+
+function requestAuth(title, msg) {
+  const modal = document.getElementById('authModal');
+  const titleEl = document.getElementById('modalTitle');
+  const msgEl = document.getElementById('modalMsg');
+  const input = document.getElementById('modalPin');
+  
+  if (titleEl) titleEl.textContent = title || 'Security Access';
+  if (msgEl) msgEl.textContent = msg || 'Please enter your PIN to continue.';
+  if (input) {
+    input.value = '';
+    setTimeout(() => input.focus(), 100);
+  }
+  if (modal) modal.style.display = 'flex';
+
+  return new Promise((resolve) => {
+    authPromiseResolve = resolve;
+  });
+}
+
+function submitAuthModal() {
+  const input = document.getElementById('modalPin');
+  const val = input ? input.value : null;
+  closeAuthModal(val);
+}
+
+function closeAuthModal(value) {
+  const modal = document.getElementById('authModal');
+  if (modal) modal.style.display = 'none';
+  if (authPromiseResolve) {
+    authPromiseResolve(value);
+    authPromiseResolve = null;
+  }
+}
+
 // ── Socket.IO Connection with Auto-Reconnect ──────────────
 let socket = null;
 let pingStart = 0;
@@ -458,7 +495,7 @@ function escapeHtml(s) {
 async function toggleBot() {
   let pwd = null;
   if (S.securityEnabled) {
-    pwd = prompt('Enter Bot Security PIN:');
+    pwd = await requestAuth('Security PIN Required', 'Please enter your Bot Security PIN to toggle the bot state:');
     if (!pwd) return;
   }
 
@@ -492,7 +529,7 @@ async function cancelAllOrders() {
   
   let pwd = null;
   if (S.securityEnabled) {
-    pwd = prompt('Enter Bot Security PIN to confirm cancellation:');
+    pwd = await requestAuth('Confirm Cancellation', 'Enter Bot Security PIN to confirm cancellation:');
     if (!pwd) return;
   }
 
@@ -570,6 +607,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initial performance chart load
   refreshPerformanceChart();
+
+  // Modal event listeners
+  document.getElementById('modalPin')?.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') submitAuthModal();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeAuthModal(null);
+  });
 });
 
 // ── Performance Chart (Capital Evolution) ────────────────────
