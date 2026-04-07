@@ -236,3 +236,25 @@ def cerrar_posicion(symbol):
     except Exception as e:
         print(f"Error cerrando posición en {symbol}: {e}")
         raise e
+
+def obtener_historial_cartera(periodo='1M', timeframe='1D'):
+    """
+    Devuelve el historial del valor de la cartera de Alpaca.
+    Periodos: 1D, 1W, 1M, 3M, 1Y, ALL
+    Timeframes: 1Min, 5Min, 15Min, 1H, 1D
+    """
+    try:
+        api = _get_api()
+        hist = api.get_portfolio_history(period=periodo, timeframe=timeframe)
+        
+        # Formatear para que el frontend lo entienda facilmente
+        res = []
+        for i in range(len(hist.timestamp)):
+            res.append({
+                'time': hist.timestamp[i], # Int (epoch)
+                'value': float(hist.equity[i])
+            })
+        return res
+    except Exception as e:
+        print(f"Error en obtener_historial_cartera: {e}")
+        return []

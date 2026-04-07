@@ -73,3 +73,23 @@ def test_alpaca():
         res['status'] = 'FAILED'
         res['error'] = str(e)
     return jsonify(res)
+
+@app.route('/api/portfolio_history')
+def portfolio_history():
+    period = request.args.get('period', '1M').upper()
+    # Map the user-friendly names to Alpaca periods
+    m = {'DAY': '1D', 'WEEK': '1W', 'MONTH': '1M', 'YEAR': '1Y', 'ALL': 'ALL'}
+    alpaca_period = m.get(period, '1M')
+    
+    # Map the user-friendly names to Alpaca timeframes
+    # For a day, we want finer granularity (1Min or 5Min)
+    # For a year, we want daily candles
+    tf_map = {'DAY': '1Min', 'WEEK': '5Min', 'MONTH': '1H', 'YEAR': '1D', 'ALL': '1D'}
+    alpaca_tf = tf_map.get(period, '1H')
+    
+    try:
+        from src.execution.alpaca_client import obtener_historial_cartera
+        data = obtener_historial_cartera(alpaca_period, alpaca_tf)
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

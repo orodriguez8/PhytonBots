@@ -1134,3 +1134,44 @@ body {
         padding: 0.5rem 1rem;
     }
 }
+
+/* Performance Section Styles */
+.performance-section {
+    margin-bottom: 1.5rem;
+}
+
+.timeframe-selector {
+    display: flex;
+    gap: 0.4rem;
+    background: rgba(255, 255, 255, 0.04);
+    padding: 3px;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+}
+
+.tf-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-2);
+    padding: 0.35rem 0.85rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.tf-btn:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.tf-btn.active {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+}
+
+#performanceChart {
+    width: 100%;
+}

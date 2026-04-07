@@ -107,6 +107,25 @@
         <!-- ROW 1: KPI Cards -->
         <section class="kpi-row" id="kpiRow"></section>
 
+        <!-- ROW 1.5: Capital Performance Chart -->
+        <section class="glass-card performance-section">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                    </svg>
+                    Evolución del Capital
+                </h2>
+                <div class="timeframe-selector" id="tfSelector">
+                    <button class="tf-btn" onclick="setPerformancePeriod('DAY')">Día</button>
+                    <button class="tf-btn active" onclick="setPerformancePeriod('MONTH')">Mes</button>
+                    <button class="tf-btn" onclick="setPerformancePeriod('YEAR')">Año</button>
+                    <button class="tf-btn" onclick="setPerformancePeriod('ALL')">Todo</button>
+                </div>
+            </div>
+            <div id="performanceChart" class="chart-container" style="height: 300px;"></div>
+        </section>
+
         <!-- ROW 2: Candlestick chart -->
         <section class="chart-section glass-card">
             <div class="section-header">

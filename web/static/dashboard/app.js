@@ -69,6 +69,11 @@ async function loadData() {
             fetchAccountInfo();
         }
 
+        // 4. Also refresh performance chart if it's the first load or Alpaca
+        if (!charts.performance || currentMode === 'ALPACA') {
+            refreshPerformanceChart();
+        }
+
         setStatus('ok');
     } catch (err) {
         console.error(err);
@@ -252,6 +257,94 @@ async function toggleAutoTrading() {
     } catch (e) {
         showToast("Error al activar automatización", 'err');
     }
+}
+
+// ── Performance Chart (Capital Evolution) ────────────────────
+let currentPerformancePeriod = 'MONTH';
+
+async function setPerformancePeriod(period) {
+    currentPerformancePeriod = period;
+    
+    // Update active class on buttons
+    const btns = document.querySelectorAll('#tfSelector .tf-btn');
+    btns.forEach(b => {
+        b.classList.toggle('active', b.getAttribute('onclick').includes(period));
+    });
+
+    refreshPerformanceChart();
+}
+
+async function refreshPerformanceChart() {
+    try {
+        const res = await fetch(`/api/portfolio_history?period=${currentPerformancePeriod}`);
+        const data = await res.json();
+
+        if (data.error) {
+            console.warn("Performance data error:", data.error);
+            return;
+        }
+
+        renderPerformanceChart(data);
+    } catch (e) {
+        console.error("Error refreshing performance chart:", e);
+    }
+}
+
+function renderPerformanceChart(data) {
+    const el = document.getElementById('performanceChart');
+    if (!el) return;
+    
+    // If chart exists, destroy or update data
+    if (charts.performance) {
+        el.innerHTML = '';
+    }
+
+    const chart = LightweightCharts.createChart(el, {
+        width: el.clientWidth,
+        height: 300,
+        layout: {
+            background: { color: 'transparent' },
+            textColor: C.text2,
+            fontSize: 11,
+        },
+        grid: {
+            vertLines: { color: C.grid },
+            horzLines: { color: C.grid },
+        },
+        timeScale: {
+            borderColor: C.grid,
+            timeVisible: true,
+            secondsVisible: false,
+        },
+        rightPriceScale: {
+            borderColor: C.grid,
+        }
+    });
+
+    const areaSeries = chart.addAreaSeries({
+        lineColor: C.blue,
+        topColor: C.blue + '40',
+        bottomColor: C.blue + '00',
+        lineWidth: 2,
+        priceFormat: {
+            type: 'price',
+            precision: 2,
+            minMove: 0.01,
+        },
+    });
+
+    // Alpaca returns timestamps in seconds (epoch), which LW charts likes
+    // But we need to ensure they are sorted if not
+    const formattedData = data.map(d => ({
+        time: d.time,
+        value: d.value
+    })).sort((a, b) => a.time - b.time);
+
+    areaSeries.setData(formattedData);
+    chart.timeScale().fitContent();
+
+    charts.performance = chart;
+    makeResponsive(chart, el);
 }
 
 // -- Polling Autorefresh (Every 30s) --
