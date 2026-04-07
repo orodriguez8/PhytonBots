@@ -12,6 +12,8 @@ from src.core.config import (
     CCXT_API_KEY, CCXT_EXCHANGE_ID
 )
 from src.core.health import get_circuit_breaker_status
+from src.risk.management import calcular_gestion_riesgo
+
 
 # Providers and wrappers
 from src.execution import alpaca_client, ccxt_client
@@ -77,6 +79,20 @@ def place_order(symbol, qty, side, tp=None, sl=None):
 def cancel_all_orders():
     if not LIVE_ENABLED: return False
     return alpaca_client.cancelar_todas_las_ordenes() if IS_ALPACA else ccxt_client.cancelar_todas_las_ordenes_ccxt()
+
+def cancel_orders_for_symbol(symbol):
+    """Cancela órdenes específicamente para un símbolo antes de cerrar posición."""
+    if not IS_ALPACA or not LIVE_ENABLED: return
+    try:
+        api = alpaca_client._get_api()
+        norm_sym = symbol.replace('/', '').upper()
+        orders = api.list_orders(status='open', symbols=[norm_sym])
+        for o in orders:
+            api.cancel_order(o.id)
+            logger.info(f"Canceled pending order {o.id} for {symbol} before closing.")
+    except Exception as e:
+        logger.error(f"Error canceling orders for {symbol}: {e}")
+
 
 def build_summary():
     """Build the full dashboard data payload (used by both HTTP and WS)."""
@@ -182,24 +198,62 @@ def trading_loop(socketio=None):
                     if LIVE_ENABLED:
                         if current_pos:
                             is_long = current_pos['direccion'] == 'LONG'
-                            should_close = (
+                            entry_price = float(current_pos['e'])
+                            atr_val = float(bot.indicadores['atr'].iloc[-1])
+
+                            # Synthetic SL/TP Check
+                            tmp_gestion = calcular_gestion_riesgo(
+                                current_pos['direccion'], entry_price, atr_val, 
+                                is_crypto=is_crypto
+                            )
+                            sl_hit = False
+                            tp_hit = False
+                            
+                            if tmp_gestion:
+                                sl_price = tmp_gestion.get('stop_loss')
+                                tp_price = tmp_gestion.get('take_profit')
+                                if is_long:
+                                    if price <= sl_price: sl_hit = True
+                                    if price >= tp_price: tp_hit = True
+                                else: # SHORT
+                                    if price >= sl_price: sl_hit = True
+                                    if price <= tp_price: tp_hit = True
+
+                            signal_close = (
                                 (dir_ in ['NEUTRAL', 'NO_TRADE'])
                                 or (is_long and dir_ == 'SHORT')
                                 or (not is_long and dir_ == 'LONG')
                             )
 
+                            should_close = signal_close or sl_hit or tp_hit
+
                             if should_close:
                                 market_name = 'ALPACA' if IS_ALPACA else CCXT_EXCHANGE_ID.upper()
-                                logger.info(f"🛑 CERRANDO {symbol} en {market_name}")
-                                push_event('order', f"CLOSING {symbol} on {market_name}", socketio)
-                                side_close = 'sell' if is_long else 'buy'
-                                place_order(symbol, current_pos['unidades'], side_close)
+                                reason_close = f"Signal {dir_}"
+                                if sl_hit: reason_close = "STOP LOSS HIT"
+                                if tp_hit: reason_close = "TAKE PROFIT HIT"
+
+                                logger.info(f"🛑 CERRANDO {symbol} ({reason_close}) en {market_name}")
+                                push_event('order', f"CLOSING {symbol} ({reason_close}) on {market_name}", socketio)
+                                
+                                try:
+                                    if IS_ALPACA:
+                                        # Cancelar órdenes primero para evitar "insufficient qty"
+                                        cancel_orders_for_symbol(symbol)
+                                        alpaca_client.cerrar_posicion(symbol)
+                                    else:
+                                        side_close = 'sell' if is_long else 'buy'
+                                        place_order(symbol, current_pos['unidades'], side_close)
+                                except Exception as e_close:
+                                    logger.error(f"Error cerrando {symbol}: {e_close}")
+                                    push_event('error', f"Error processing {symbol}: {e_close}", socketio)
+
                                 state.BOT_HISTORY.insert(0, {
                                     'time': datetime.datetime.now().isoformat(),
                                     'sym': symbol,
                                     'type': 'CLOSE',
                                     'price': safe_float(price),
-                                    'reason': f"Signal {dir_}",
+                                    'reason': reason_close,
                                 })
 
                         elif dir_ == 'LONG':

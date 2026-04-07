@@ -140,7 +140,7 @@ def cancelar_todas_las_ordenes():
 def colocar_orden_mercado(symbol, qty, side, take_profit=None, stop_loss=None):
     """
     Ejecuta una orden de mercado en Alpaca. 
-    Si hay SL/TP, crea una orden Bracket.
+    Si hay SL/TP, crea una orden Bracket (excepto para Crypto).
     """
     try:
         api = _get_api()
@@ -148,23 +148,30 @@ def colocar_orden_mercado(symbol, qty, side, take_profit=None, stop_loss=None):
         is_crypto = any(q in symbol.upper() for q in ['USD', 'USDT', 'USDC', '/'])
         precision = 8 if is_crypto else 2
         
+        # Alpaca does NOT support advanced order classes (bracket, oco, etc) for Crypto
         order_class = 'simple'
         tp_dict = None
         sl_dict = None
         
-        if take_profit or stop_loss:
+        if (take_profit or stop_loss) and not is_crypto:
             order_class = 'bracket'
             if take_profit:
                 tp_dict = dict(limit_price=round(float(take_profit), precision))
             if stop_loss:
                 sl_dict = dict(stop_price=round(float(stop_loss), precision))
+        elif (take_profit or stop_loss) and is_crypto:
+            print(f"INFO: SL/TP ignorado para {symbol} (Alpaca no permite bracket orders en Crypto)")
+
+        # Fractional orders MUST be 'day' orders in Alpaca
+        is_fractional = float(qty) != int(float(qty))
+        tif = 'day' if (is_fractional and not is_crypto) else 'gtc'
 
         order = api.submit_order(
             symbol=symbol.replace('/', ''), # Alpaca crypto icons don't like '/'
             qty=qty,
             side=side.lower(),
             type='market',
-            time_in_force='gtc',
+            time_in_force=tif,
             order_class=order_class,
             take_profit=tp_dict,
             stop_loss=sl_dict,
@@ -172,4 +179,17 @@ def colocar_orden_mercado(symbol, qty, side, take_profit=None, stop_loss=None):
         return order
     except Exception as e:
         print(f"Error colocando orden en {symbol}: {e}")
+        raise e
+
+def cerrar_posicion(symbol):
+    """
+    Cierra completamente una posición abierta para el símbolo indicado.
+    """
+    try:
+        api = _get_api()
+        # Alpaca crypto icons don't like '/'
+        norm_sym = symbol.replace('/', '').upper()
+        return api.close_position(norm_sym)
+    except Exception as e:
+        print(f"Error cerrando posición en {symbol}: {e}")
         raise e
