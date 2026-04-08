@@ -210,7 +210,7 @@ class TradingBot:
             regime = "TREND" if adx_val > 25 else "MEAN_REV" if adx_val < 20 else "HYBRID"
             
             expert_output = {
-                "signal": decision['direction'],
+                "signal": decision['direccion'],
                 "ticker": "CRYPTO",
                 "btc_macro": "bull" if self.indicadores['ema_50'].iloc[-1] > self.indicadores['ema_200'].iloc[-1] else "neutral",
                 "regime": regime,
