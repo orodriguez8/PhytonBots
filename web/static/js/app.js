@@ -34,11 +34,13 @@ function requestAuth(title, msg) {
   
   if (titleEl) titleEl.textContent = title || 'Security Access';
   if (msgEl) msgEl.textContent = msg || 'Please enter your PIN to continue.';
+  if (modal) modal.style.display = 'flex';
   if (input) {
     input.value = '';
-    setTimeout(() => input.focus(), 100);
+    setTimeout(() => {
+      try { input.focus(); } catch(e) {}
+    }, 150);
   }
-  if (modal) modal.style.display = 'flex';
 
   return new Promise((resolve) => {
     authPromiseResolve = resolve;
