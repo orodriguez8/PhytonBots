@@ -378,7 +378,7 @@ function renderClosed(closed) {
       <td class="mono">$${c.p}</td>
       <td class="mono">${c.entry ? '$' + c.entry : '—'}</td>
       <td class="${(c.pl || 0) >= 0 ? 'up' : 'down'}" style="font-weight:700;font-family:var(--mono)">
-        ${c.pl !== null ? ((c.pl >= 0 ? '+' : '') + '$' + c.pl.toFixed(2)) : '—'}
+        ${c.side === 'SELL' ? ((c.pl || 0) >= 0 ? '+' : '') + '$' + (c.pl || 0).toFixed(2) : '—'}
       </td>
       <td style="color:var(--dim-2);font-size:0.75rem">${formatTime(c.time)}</td>
     </tr>
