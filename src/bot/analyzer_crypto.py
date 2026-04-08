@@ -9,10 +9,10 @@ from src.strategies.patterns.velas import detectar_patron
 
 logger = logging.getLogger(__name__)
 
-class CryptoExpertAnalyzer:
+class CryptoAnalyzer:
     """
-    Sistema experto de análisis técnico para trading algorítmico de Crypto.
-    SOLO LONG (Alpaca API).
+    Expert Quantitative Technical Analysis Bot for Crypto (LONG positions only).
+    Profile: CONSERVATIVE (Score >= 80, Risk 2.0%)
     """
 
     def __init__(self, symbol='BTC/USD', capital=10000.0, risk_per_trade=0.015):
@@ -134,5 +134,5 @@ class CryptoExpertAnalyzer:
         }
 
 if __name__ == "__main__":
-    analyzer = CryptoExpertAnalyzer('BTC/USD')
+    analyzer = CryptoAnalyzer('BTC/USD')
     print(analyzer.analyze())
