@@ -85,8 +85,8 @@
 
         <!-- ═══ Main Content ══════════════════════════════════════ -->
         <main class="main-content" id="mainContent">
-            <!-- Stats Row (Normal) -->
-            <div class="stats-row" id="statsRow" style="margin-bottom: 1rem;">
+            <!-- Stats Row -->
+            <div class="stats-row" id="statsRow">
                 <div class="stat-card">
                     <span class="stat-label">Open Positions</span>
                     <span class="stat-value" id="posCount">0</span>
@@ -115,28 +115,21 @@
                 </div>
             </div>
 
-            <!-- Portfolio Performance Chart (Collapsible & Collapsed by default) -->
+            <!-- Portfolio Performance Chart -->
             <div class="panel performance-panel">
-                <div class="panel-header" style="cursor: pointer;" onclick="togglePanel('perfBody', this.querySelector('.collapse-btn'))">
+                <div class="panel-header">
                     <span class="panel-title">
                         <i data-lucide="line-chart" style="width:14px;height:14px"></i>
                         Portfolio Performance
                     </span>
-                    <div style="display:flex; gap:0.5rem; align-items:center" onclick="event.stopPropagation()">
-                        <div class="timeframe-selector" id="tfSelector">
-                            <button class="tf-btn" onclick="setPerformancePeriod('DAY')">Day</button>
-                            <button class="tf-btn active" onclick="setPerformancePeriod('MONTH')">Month</button>
-                            <button class="tf-btn" onclick="setPerformancePeriod('YEAR')">Year</button>
-                            <button class="tf-btn" onclick="setPerformancePeriod('ALL')">All</button>
-                        </div>
-                        <button class="collapse-btn collapsed">
-                            <i data-lucide="chevron-down" style="width:14px;height:14px"></i>
-                        </button>
+                    <div class="timeframe-selector" id="tfSelector">
+                        <button class="tf-btn" onclick="setPerformancePeriod('DAY')">Day</button>
+                        <button class="tf-btn active" onclick="setPerformancePeriod('MONTH')">Month</button>
+                        <button class="tf-btn" onclick="setPerformancePeriod('YEAR')">Year</button>
+                        <button class="tf-btn" onclick="setPerformancePeriod('ALL')">All</button>
                     </div>
                 </div>
-                <div id="perfBody" class="collapsible collapsed">
-                    <div id="performanceChart" class="chart-container" style="height: 300px; padding: 1rem 0;"></div>
-                </div>
+                <div id="performanceChart" class="chart-container" style="height: 300px; padding: 1rem 0;"></div>
             </div>
 
             <!-- Open Positions -->
