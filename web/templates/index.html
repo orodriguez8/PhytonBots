@@ -85,33 +85,44 @@
 
         <!-- ═══ Main Content ══════════════════════════════════════ -->
         <main class="main-content" id="mainContent">
-            <!-- Stats Row -->
-            <div class="stats-row" id="statsRow">
-                <div class="stat-card">
-                    <span class="stat-label">Open Positions</span>
-                    <span class="stat-value" id="posCount">0</span>
+            <!-- KPIs Row (Collapsible) -->
+            <div class="panel" id="panelKPIs" style="margin-bottom: 1rem;">
+                <div class="panel-header" style="cursor: pointer; margin-bottom: 0;" onclick="togglePanel('statsRow', this.querySelector('.collapse-btn'))">
+                    <span class="panel-title">
+                        <i data-lucide="bar-chart-3" style="width:14px;height:14px"></i>
+                        Key Performance Indicators
+                    </span>
+                    <button class="collapse-btn collapsed">
+                        <i data-lucide="chevron-down" style="width:14px;height:14px"></i>
+                    </button>
                 </div>
-                <div class="stat-card">
-                    <span class="stat-label">Open P/L</span>
-                    <span class="stat-value" id="openPl" style="font-size:1.2rem">$0.00</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-label">₿ Crypto P/L</span>
-                    <span class="stat-value" id="plCrypto" style="font-size:1rem">$0.00</span>
-                    <span class="stat-sub" id="plCryptoRealized" style="font-size:0.65rem">Realiz.: $0.00</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-label">📈 Acciones P/L</span>
-                    <span class="stat-value" id="plStocks" style="font-size:1rem">$0.00</span>
-                    <span class="stat-sub" id="plStocksRealized" style="font-size:0.65rem">Realiz.: $0.00</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-label">Pending Orders</span>
-                    <span class="stat-value" id="orderCount">0</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-label">Provider</span>
-                    <span class="stat-value" id="providerLabel" style="font-size:1rem">—</span>
+                <div class="stats-row collapsible collapsed" id="statsRow" style="margin-top: 1rem;">
+                    <div class="stat-card">
+                        <span class="stat-label">Open Positions</span>
+                        <span class="stat-value" id="posCount">0</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Open P/L</span>
+                        <span class="stat-value" id="openPl" style="font-size:1.2rem">$0.00</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">₿ Crypto P/L</span>
+                        <span class="stat-value" id="plCrypto" style="font-size:1rem">$0.00</span>
+                        <span class="stat-sub" id="plCryptoRealized" style="font-size:0.65rem">Realiz.: $0.00</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">📈 Acciones P/L</span>
+                        <span class="stat-value" id="plStocks" style="font-size:1rem">$0.00</span>
+                        <span class="stat-sub" id="plStocksRealized" style="font-size:0.65rem">Realiz.: $0.00</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Pending Orders</span>
+                        <span class="stat-value" id="orderCount">0</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Provider</span>
+                        <span class="stat-value" id="providerLabel" style="font-size:1rem">—</span>
+                    </div>
                 </div>
             </div>
 
