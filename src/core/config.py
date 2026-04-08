@@ -59,7 +59,7 @@ WATCHLIST = [
 # Nota: Forex en Alpaca requiere permisos específicos, pero el bot ya lo soporta.
 
 # --- Umbral de Confluencias ---
-MIN_CONFLUENCIAS = 3             # Mínimo de señales alineadas para operar (de un máx de 5)
+MIN_CONFLUENCIAS = 7             # Umbral del Sistema Experto (Acciones: Score >= 7)
 
 # --- Parámetros de Indicadores ---
 PERIODO_EMA_RAPIDA  = 20         # EMA rápida (corto plazo)

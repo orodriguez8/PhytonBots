@@ -36,90 +36,144 @@ def contar_confluencias(datos: pd.DataFrame, indicadores: dict, is_crypto: bool 
 
     if not is_crypto:
         # =========================================================================
-        # ESTRATEGIA ACCIONES — Trend Following Disciplinado
-        # Objetivo: Evitar operar contra la tendencia primaria.
-        # 5 condiciones disponibles. MIN_CONFLUENCIAS = 3 para ejecutar.
+        # ESTRATEGIA ACCIONES — SISTEMA EXPERTO DE ANÁLISIS TÉCNICO
+        # Scoring 0-10 | Umbral >= 7
         # =========================================================================
+        score_long  = 0
+        score_short = 0
 
-        # ── LONG ──────────────────────────────────────────────────────────────────
+        # Adquirir indicadores extendidos si existen
+        adx  = indicadores.get('adx', pd.Series(0, index=datos.index)).iloc[-1]
+        vwap = indicadores.get('vwap', datos['close']).iloc[-1]
+        obv  = indicadores.get('obv', pd.Series(0, index=datos.index)).iloc[-1]
+        
+        # 1. TENDENCIA ALINEADA TF MÚLTIPLE: +2
+        # (Proxy: EMA50 > EMA200 y Precio > EMA200)
+        macro_alcista = e50 > e200 and p > e200
+        macro_bajista = e50 < e200 and p < e200
+        
+        if macro_alcista:
+            score_long += 2
+            long_confs.append("✅ Tendencia MTF Alineada (+2)")
+        elif macro_bajista:
+            score_short += 2
+            short_confs.append("🔴 Tendencia MTF Alineada (+2)")
 
-        # 1. FILTRO MACRO: Tendencia principal alcista (Golden Cross en vigor)
-        if e50 > e200:
-            long_confs.append("✅ Macro Alcista: EMA50 > EMA200 (Golden Cross activo)")
+        # 2. VWAP COMO SOPORTE/RESISTENCIA: +1.5
+        if p > vwap and macro_alcista:
+            score_long += 1.5
+            long_confs.append("✅ Precio sobre VWAP/Soporte (+1.5)")
+        elif p < vwap and macro_bajista:
+            score_short += 1.5
+            short_confs.append("🔴 Precio bajo VWAP/Resistencia (+1.5)")
 
-        # 2. ESTRUCTURA: Precio por encima de EMA20 y EMA50 (momentum alcista)
-        if p > e20 and p > e50:
-            long_confs.append("✅ Estructura: Precio sobre EMA20 y EMA50")
+        # 3. RSI EN ZONA ÓPTIMA: +1.5
+        # Alcista: 45-65 | Bajista: 35-55
+        if 45 <= rsi <= 65:
+            score_long += 1.5
+            long_confs.append(f"✅ RSI Zona Óptima ({rsi:.1f}) (+1.5)")
+        elif 35 <= rsi <= 55:
+            score_short += 1.5
+            short_confs.append(f"🔴 RSI Zona Óptima ({rsi:.1f}) (+1.5)")
 
-        # 3. RSI: En zona de momentum sano, sin sobrecompra extrema
-        if 45 <= rsi <= 72:
-            long_confs.append(f"✅ RSI en zona alcista sana: {rsi:.1f}")
-
-        # 4. MACD: Histograma positivo y en expansión
+        # 4. MACD ALINEADO: +1
         if hist > 0 and hist > hist_previo:
-            long_confs.append("✅ MACD: Momentum alcista en expansion")
+            score_long += 1
+            long_confs.append("✅ MACD Alineado y en Expansión (+1)")
+        elif hist < 0 and hist < hist_previo:
+            score_short += 1
+            short_confs.append("🔴 MACD Alineado y en Expansión (+1)")
 
-        # 5. VOLUMEN: Confirmación de volumen sobre la media
-        if vol > vol_med * 0.9:
-            long_confs.append("✅ Volumen: Por encima del 90% de la media")
+        # 5. VOLUMEN CONFIRMA: +1.5
+        if vol > vol_med * 1.2:
+            score_long += 1.5
+            score_short += 1.5
+            long_confs.append("✅ Volumen Confirmado (>1.2x) (+1.5)")
+            short_confs.append("🔴 Volumen Confirmado (>1.2x) (+1.5)")
 
-        # ── SHORT ─────────────────────────────────────────────────────────────────
+        # 6. DIVERGENCIA FAVORABLE: +1.5 (Simplificada: RSI vs Precio)
+        if rsi > indicadores['rsi'].iloc[-2] and p < prev_close:
+            score_long += 1.5
+            long_confs.append("✅ Divergencia Alcista Detectada (+1.5)")
+        elif rsi < indicadores['rsi'].iloc[-2] and p > prev_close:
+            score_short += 1.5
+            short_confs.append("🔴 Divergencia Bajista Detectada (+1.5)")
 
-        # 1. FILTRO MACRO: Tendencia principal bajista (Death Cross)
-        if e50 < e200:
-            short_confs.append("🔴 Macro Bajista: EMA50 < EMA200 (Death Cross activo)")
+        # 7. PATRÓN DE VELAS: +1 (Momento histórico vs previo)
+        if abs(hist) > abs(hist_previo) * 1.1:
+            score_long += 1
+            score_short += 1
+            long_confs.append("✅ Patrón de Impulso Confirmado (+1)")
+            short_confs.append("🔴 Patrón de Impulso Confirmado (+1)")
 
-        # 2. ESTRUCTURA: Precio debajo de EMA20 y EMA50
-        if p < e20 and p < e50:
-            short_confs.append("🔴 Estructura: Precio bajo EMA20 y EMA50")
-
-        # 3. RSI: En zona bajista sin sobreventa extrema
-        if 28 <= rsi <= 55:
-            short_confs.append(f"🔴 RSI en canal bajista: {rsi:.1f}")
-
-        # 4. MACD: Histograma negativo y en contraccion
-        if hist < 0 and hist < hist_previo:
-            short_confs.append("🔴 MACD: Momentum bajista en expansion")
-
-        # 5. VOLUMEN: Presión vendedora confirmada
-        if vol > vol_med * 0.9:
-            short_confs.append("🔴 Volumen: Presion vendedora confirmada")
+        # Inyectamos el score en el resultado para el bot
+        long_confs.append(f"TOTAL SCORE: {score_long}/10")
+        short_confs.append(f"TOTAL SCORE: {score_short}/10")
+        
+        final_long = score_long
+        final_short = score_short
 
     else:
         # =========================================================================
-        # ESTRATEGIA CRIPTO — Mean Reversion Conservadora con Filtro Macro
-        # Objetivo: Solo comprar pullbacks en tendencia alcista. NUNCA contra tendencia.
-        # Long-only (Alpaca no permite short en crypto).
-        # 5 condiciones. MIN_CONFLUENCIAS = 3 para ejecutar.
+        # ESTRATEGIA CRIPTO — SISTEMA EXPERTO (SOLO LONG)
+        # Scoring 0-10 | Umbral >= 7.5
         # =========================================================================
+        score_long = 0
+        
+        # Indicadores requeridos
+        e9   = indicadores.get('ema_9', p)
+        e21  = indicadores.get('ema_21', p)
+        adx  = indicadores.get('adx', pd.Series(0, index=datos.index)).iloc[-1]
+        vwap = indicadores.get('vwap', datos['close']).iloc[-1]
+        
+        # 1. BTC EN TENDENCIA FAVORABLE (Proxy: e50 > e200 en 15m como indicador de mercado)
+        if e50 > e200:
+            score_long += 2
+            long_confs.append("✅ BTC/Mercado en Tendencia Favorable (+2)")
+        
+        # 2. TRIPLE EMA ALINEADA (9 > 21 > 50): +1.5
+        if e9.iloc[-1] > e21.iloc[-1] > e50:
+            score_long += 1.5
+            long_confs.append("✅ Triple EMA Alcista Alineada (+1.5)")
 
-        # ── FILTRO MACRO OBLIGATORIO: EMA200 como filtro de tendencia primaria ───
-        # Si el precio está bajo la EMA200 = bear market primario = NO operar.
-        macro_alcista = p > e200
+        # 3. RSI EN ZONA ÓPTIMA + SIN DIVERGENCIA ADVERSA: +1.5
+        # Zona TREND: 45-60
+        if 45 <= rsi <= 60:
+            score_long += 1.5
+            long_confs.append(f"✅ RSI en Zona de Momentum ({rsi:.1f}) (+1.5)")
 
-        if macro_alcista:
-            long_confs.append("✅ Macro: Precio sobre EMA200 (Tendencia primaria alcista)")
+        # 4. MACD ALINEADO: +1
+        if hist > 0 and hist > hist_previo:
+            score_long += 1
+            long_confs.append("✅ MACD Alcista en Expansión (+1)")
 
-            # 1. PULLBACK A ZONA DE VALOR: EMA20 o BB inferior
-            en_zona_pullback = (p <= e20 * 1.005) or (p <= bb_inf * 1.02)
-            if en_zona_pullback:
-                long_confs.append("✅ Estructura: Pullback a soporte (EMA20 / BB inferior)")
+        # 5. VOLUMEN CONFIRMA: +1.5
+        if vol > vol_med * 1.4:
+            score_long += 1.5
+            long_confs.append("✅ Volumen de Ruptura Confirmado (+1.5)")
 
-            # 2. RSI: Sobreventa relativa (momentum agotado en la corrección)
-            if rsi < 50:
-                long_confs.append(f"✅ RSI en sobreventa relativa: {rsi:.1f}")
+        # 6. PATRÓN DE VELAS / PULLBACK (+1 / +1.5)
+        # Pullback a EMA21
+        if p <= e21.iloc[-1] * 1.002 and p >= e21.iloc[-1] * 0.998:
+            score_long += 1.5
+            long_confs.append("✅ Pullback a EMA21 Confirmado (+1.5)")
 
-            # 3. MACD: Señal de rebote (histograma mejorando)
-            if (hist > hist_previo) or (macd > sig and hist > -0.5 * abs(hist_previo + 0.0001)):
-                long_confs.append("✅ MACD: Señal de rebote / inercia positiva")
+        # 7. ZONA TÉCNICA RELEVANTE: +1.5
+        if p > vwap:
+            score_long += 1.5
+            long_confs.append("✅ Confluencia sobre VWAP (+1.5)")
 
-            # 4. VOLUMEN: Confirmacion (no operar en silencio de mercado)
-            if vol > vol_med * 0.8:
-                long_confs.append("✅ Volumen: Actividad suficiente para confirmar movimiento")
+        # MODO DE MERCADO (ADX)
+        regime = "TREND" if adx > 25 else "MEAN_REV" if adx < 20 else "HYBRID"
+        long_confs.append(f"🔍 Régimen detectado: {regime} (ADX: {adx:.1f})")
+        long_confs.append(f"TOTAL SCORE: {score_long}/10")
+        
+        final_long = score_long
+        final_short = 0
 
     return {
         'long':        long_confs,
         'short':       short_confs,
-        'total_long':  len(long_confs),
-        'total_short': len(short_confs),
+        'total_long':  final_long,
+        'total_short': final_short,
     }

@@ -33,15 +33,17 @@ def calcular_ema(serie: pd.Series, periodo: int) -> pd.Series:
 
 def calcular_emas(datos: pd.DataFrame) -> dict:
     """
-    Calcula las tres EMAs principales (20, 50, 200) sobre el precio de cierre.
+    Calcula las EMAs principales (9, 21, 20, 50, 200) sobre el precio de cierre.
 
     Args:
         datos: DataFrame OHLCV
 
     Returns:
-        Diccionario con claves 'ema_20', 'ema_50', 'ema_200'
+        Diccionario con las series de EMA
     """
     return {
+        'ema_9':   calcular_ema(datos['close'], 9),
+        'ema_21':  calcular_ema(datos['close'], 21),
         'ema_20':  calcular_ema(datos['close'], PERIODO_EMA_RAPIDA),
         'ema_50':  calcular_ema(datos['close'], PERIODO_EMA_MEDIA),
         'ema_200': calcular_ema(datos['close'], PERIODO_EMA_LENTA),
