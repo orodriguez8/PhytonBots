@@ -154,32 +154,23 @@ def build_summary():
                 total_open_pl = sum(p['p'] for p in data['pos'])
                 data['pl'] = safe_float(total_open_pl)
 
-                # ── Desglose P/L abierto: Crypto vs Acciones ──────────────────
-                def _is_crypto(sym):
-                    return any(q in sym.upper() for q in ['USD', 'USDT', 'USDC', '/'])
-
-                data['pl_crypto'] = safe_float(sum(
-                    p['p'] for p in data['pos'] if _is_crypto(p['s'])
-                ))
-                data['pl_stocks'] = safe_float(sum(
-                    p['p'] for p in data['pos'] if not _is_crypto(p['s'])
-                ))
-
-                # ── Desglose P/L realizado: Crypto vs Acciones ────────────────
-                closed = _get_closed_cached()
-                data['closed'] = closed
-                data['pl_crypto_realized'] = safe_float(sum(
-                    (c.get('pl') or 0)
-                    for c in closed
-                    if _is_crypto(c['s']) and c.get('pl') is not None
-                ))
-                data['pl_stocks_realized'] = safe_float(sum(
-                    (c.get('pl') or 0)
-                    for c in closed
-                    if not _is_crypto(c['s']) and c.get('pl') is not None
-                ))
-
                 data['orders'] = get_orders()
+
+        # ── Desglose P/L: Crypto vs Acciones ──────────────────────────────────
+        def _is_crypto(sym):
+            return any(q in str(sym).upper() for q in ['USD', 'USDT', 'USDC', '/'])
+
+        data['pl_crypto'] = safe_float(sum(p['p'] for p in data['pos'] if _is_crypto(p['s'])))
+        data['pl_stocks'] = safe_float(sum(p['p'] for p in data['pos'] if not _is_crypto(p['s'])))
+
+        # Cargar posiciones cerradas (si hay keys configuradas)
+        if LIVE_ENABLED:
+            data['closed'] = _get_closed_cached()
+
+        cl = data.get('closed', [])
+        data['pl_crypto_realized'] = safe_float(sum((c.get('pl') or 0) for c in cl if _is_crypto(c['s']) and c.get('pl') is not None))
+        data['pl_stocks_realized'] = safe_float(sum((c.get('pl') or 0) for c in cl if not _is_crypto(c['s']) and c.get('pl') is not None))
+
 
         return data
     except Exception as e:

@@ -247,24 +247,37 @@ def cerrar_posicion(symbol):
         print(f"Error cerrando posición en {symbol}: {e}")
         raise e
 
-def obtener_historial_cartera(periodo='1M', timeframe='1D'):
+def obtener_historial_cartera(periodo='1M', timeframe='1H'):
     """
     Devuelve el historial del valor de la cartera de Alpaca.
-    Periodos: 1D, 1W, 1M, 3M, 1Y, ALL
-    Timeframes: 1Min, 5Min, 15Min, 1H, 1D
+    Filtra valores nulos para evitar errores en el gráfico.
     """
     try:
         api = _get_api()
         hist = api.get_portfolio_history(period=periodo, timeframe=timeframe)
         
-        # Formatear para que el frontend lo entienda facilmente
+        if not hist or not hasattr(hist, 'timestamp') or not hist.timestamp:
+            return []
+
         res = []
+        seen_times = set()
+        
         for i in range(len(hist.timestamp)):
-            res.append({
-                'time': hist.timestamp[i], # Int (epoch)
-                'value': float(hist.equity[i])
-            })
+            ts = hist.timestamp[i]
+            val = hist.equity[i]
+            
+            # Filtrar valores nulos y asegurar timestamps únicos (requerido por la librería del gráfico)
+            if ts is not None and val is not None and ts not in seen_times:
+                res.append({
+                    'time': int(ts), 
+                    'value': float(val)
+                })
+                seen_times.add(ts)
+        
+        # Ordenar cronológicamente (exigencia de LightweightCharts)
+        res.sort(key=lambda x: x['time'])
         return res
     except Exception as e:
         print(f"Error en obtener_historial_cartera: {e}")
         return []
+

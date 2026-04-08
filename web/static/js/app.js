@@ -652,20 +652,32 @@ window.setPerformancePeriod = setPerformancePeriod; // Make global for onclick
 async function refreshPerformanceChart() {
   try {
     const res = await fetch(`/api/portfolio_history?period=${currentPerformancePeriod}`);
+    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
     const data = await res.json();
-    if (data.error) return;
+    if (data.error) {
+       addConsoleLog('error', 'Chart Data Error: ' + data.error);
+       return;
+    }
+    if (!data.length) {
+       console.log('Performance Chart: No data yet for this period.');
+       return;
+    }
     renderPerformanceChart(data);
-  } catch (e) {}
+  } catch (e) {
+    console.error('refreshPerformanceChart failed:', e);
+  }
 }
 
 function renderPerformanceChart(data) {
   const el = document.getElementById('performanceChart');
-  if (!el) return;
+  if (!el || !data) return;
 
   if (!perfChart) {
+    const w = el.clientWidth || 600;
     perfChart = LightweightCharts.createChart(el, {
-      width: el.clientWidth,
+      width: w,
       height: 300,
+
       layout: {
         background: { color: 'transparent' },
         textColor: '#64748b',
