@@ -45,11 +45,12 @@ def obtener_posiciones_abiertas():
         # Intentamos obtener actividades recientes para aproximar la fecha de entrada
         fills = {}
         try:
-            activities = api.get_activities(activity_types='FILL')
+            activities = api.get_activities(activity_types=['FILL'], page_size=50)
             for f in activities:
                 if f.symbol not in fills:
                     fills[f.symbol] = f.transaction_time
-        except:
+        except Exception as e:
+            print(f"DEBUG: Error recuperando fills recientes en historial abierto: {e}")
             pass
 
         res = []
@@ -81,7 +82,7 @@ def obtener_posiciones_cerradas():
         api = _get_api()
         # Buscamos 'FILL' y 'PTRADE' (que a veces se usa para cierres)
         tipos = ['FILL', 'PTRADE']
-        activities = api.get_activities(activity_types=tipos, pageSize=100, direction='desc')
+        activities = api.get_activities(activity_types=tipos, page_size=100)
         
         # print(f"DEBUG: Encontradas {len(activities)} actividades") # Útil para logs del server
         

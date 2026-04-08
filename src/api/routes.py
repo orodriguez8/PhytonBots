@@ -97,7 +97,7 @@ def portfolio_history():
     # Map the user-friendly names to Alpaca timeframes
     # For a day, we want finer granularity (1Min or 5Min)
     # For a year, we want daily candles
-    tf_map = {'DAY': '1Min', 'WEEK': '5Min', 'MONTH': '1H', 'YEAR': '1D', 'ALL': '1D'}
+    tf_map = {'DAY': '1Min', 'WEEK': '5Min', 'MONTH': '1D', 'YEAR': '1D', 'ALL': '1D'}
     alpaca_tf = tf_map.get(period, '1H')
     
     try:
