@@ -73,87 +73,114 @@ def obtener_posiciones_abiertas():
 
 def obtener_posiciones_cerradas():
     """
-    Obtiene el historial de posiciones cerradas recientemente agrupando 'fills' 
-    para evitar duplicados visuales y mostrar el P/L real por operación.
+    Obtiene el historial de actividades de relleno (fills) de Alpaca y los
+    agrupa por operación para calcular el P/L realizado.
+    
+    Bug fix: 'pageSize' no existe en alpaca-trade-api → usar 'count'.
+    Bug fix: 'PTRADE' no es un tipo válido en paper trading → solo 'FILL'.
     """
     try:
         from dateutil import parser
         api = _get_api()
-        # Buscamos 'FILL' y 'PTRADE' (que a veces se usa para cierres)
-        tipos = ['FILL', 'PTRADE']
-        activities = api.get_activities(activity_types=tipos, pageSize=100, direction='desc')
         
-        # print(f"DEBUG: Encontradas {len(activities)} actividades") # Útil para logs del server
+        # CORRECTO: solo FILL, y el param correcto es 'count' (no 'pageSize')
+        activities = api.get_activities(
+            activity_types='FILL',
+            count=100,
+            direction='desc'
+        )
         
+        if not activities:
+            print("INFO obtener_posiciones_cerradas: sin actividades FILL (cuenta nueva o sin operaciones)")
+            return []
+
         agrupados = {}
         for f in activities:
             symbol = getattr(f, 'symbol', '')
-            side = getattr(f, 'side', '').upper()
-            qty = float(getattr(f, 'qty', 0))
-            price = float(getattr(f, 'price', 0))
-            
-            if not symbol or not side or qty <= 0: continue
-            
+            side   = getattr(f, 'side', '').upper()
+            qty    = float(getattr(f, 'qty', 0) or 0)
+            price  = float(getattr(f, 'price', 0) or 0)
+
+            if not symbol or not side or qty <= 0 or price <= 0:
+                continue
+
             t = getattr(f, 'transaction_time', None)
-            if not t: continue
+            if not t:
+                continue
             if isinstance(t, str):
                 t = parser.parse(t)
-            
+
+            # Clave única: mismo símbolo + lado + minuto exacto (agrupa fills parciales)
             time_key = t.strftime('%Y-%m-%d %H:%M')
             key = f"{symbol}_{side}_{time_key}"
-            
+
             if key not in agrupados:
                 agrupados[key] = {
-                    's': symbol,
-                    'side': side,
-                    'q': 0.0,
+                    's':         symbol,
+                    'side':      side,
+                    'q':         0.0,
                     'total_val': 0.0,
-                    'time': t.isoformat()
+                    'time':      t.isoformat()
                 }
-            
-            agrupados[key]['q'] += qty
+
+            agrupados[key]['q']         += qty
             agrupados[key]['total_val'] += qty * price
 
-        res = []
-        buys = {}
-        # Ordenar de antiguo a nuevo para casar P/L correctamente
+        if not agrupados:
+            return []
+
+        # Ordenar de más antiguo a más nuevo para casar BUY → SELL
         sorted_keys = sorted(agrupados.keys(), key=lambda x: agrupados[x]['time'])
-        
+
+        res  = []
+        buys = {}  # guarda el precio medio de entrada por símbolo
+
         for k in sorted_keys:
-            item = agrupados[k]
+            item  = agrupados[k]
             avg_p = item['total_val'] / item['q']
-            
+
             if item['side'] == 'BUY':
-                buys[item['s']] = avg_p
+                buys[item['s']] = avg_p  # actualiza siempre con el último precio de compra
+
             elif item['side'] == 'SELL':
                 entry = buys.get(item['s'])
-                pl = (avg_p - entry) * item['q'] if entry else 0
+                pl    = round((avg_p - entry) * item['q'], 2) if entry else 0.0
                 res.insert(0, {
-                    's': item['s'],
-                    'side': 'SELL',
-                    'q': round(item['q'], 4),
-                    'p': round(avg_p, 4),
+                    's':     item['s'],
+                    'side':  'SELL',
+                    'q':     round(item['q'], 4),
+                    'p':     round(avg_p, 4),
                     'entry': round(entry, 4) if entry else None,
-                    'pl': round(pl, 2),
-                    'time': item['time']
+                    'pl':    pl,
+                    'time':  item['time']
                 })
-        
-        # Si NO hay cierres calculados (res vacío), mostrar los últimos movimientos agrupados (FALLBACK)
-        # Esto sirve para que el usuario vea AL MENOS las compras abiertas o ventas sin match.
+
+        # FALLBACK: si no hay ningún cierre casado, mostrar todas las actividades
+        # (compras activas o ventas sin match) para que el usuario vea algo.
         if not res:
-            final_fallback = [{ 
-                's': i['s'], 
-                'side': i['side'], 
-                'q': round(i['q'], 4), 
-                'p': round(i['total_val']/i['q'], 4), 
-                'pl': 0, 
-                'time': i['time'] 
-            } for i in sorted(agrupados.values(), key=lambda x: x['time'], reverse=True)[:10]]
-            return final_fallback
-            
-        return res[:10]
+            fallback = [
+                {
+                    's':    i['s'],
+                    'side': i['side'],
+                    'q':    round(i['q'], 4),
+                    'p':    round(i['total_val'] / i['q'], 4),
+                    'pl':   0.0,
+                    'time': i['time']
+                }
+                for i in sorted(
+                    agrupados.values(),
+                    key=lambda x: x['time'],
+                    reverse=True
+                )[:15]
+            ]
+            return fallback
+
+        return res[:15]
+
     except Exception as e:
         print(f"ERROR en obtener_posiciones_cerradas: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
 def obtener_ordenes_activas():

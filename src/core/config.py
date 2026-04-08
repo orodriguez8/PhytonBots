@@ -42,13 +42,13 @@ else:
 
 # --- Multiplicadores ATR para Stop Loss y Take Profit ---
 # Estrategia Asimétrica para ACCIONES (Trend Following)
-STOCK_ATR_SL = 1.5       # Stop Loss Ajustado
-STOCK_ATR_TP = 4.5       # Take Profit Largo (1:3 Risk/Reward)
+STOCK_ATR_SL = 1.8       # Stop Loss flexible (1.8x ATR)
+STOCK_ATR_TP = 3.6       # Take Profit 1:2 Risk/Reward — más alcanzable
 
-# Estrategia Seguro para CRIPTO (Optimized Mean Reversion)
-# Ajustamos a un ratio positivo de 1:1.4 (Win 3.5 ATR / SL 2.5 ATR)
-CRYPTO_ATR_SL = 2.5
-CRYPTO_ATR_TP = 3.5
+# Estrategia Conservadora para CRIPTO (Mean Reversion con filtro macro)
+# Ratio 1:1.5 — conservador para entornos volátiles
+CRYPTO_ATR_SL = 2.0
+CRYPTO_ATR_TP = 3.0
 
 
 # --- Vigilancia (Watchlist) ---
@@ -59,7 +59,7 @@ WATCHLIST = [
 # Nota: Forex en Alpaca requiere permisos específicos, pero el bot ya lo soporta.
 
 # --- Umbral de Confluencias ---
-MIN_CONFLUENCIAS = 4             # Mínimo de señales alineadas para operar
+MIN_CONFLUENCIAS = 3             # Mínimo de señales alineadas para operar (de un máx de 5)
 
 # --- Parámetros de Indicadores ---
 PERIODO_EMA_RAPIDA  = 20         # EMA rápida (corto plazo)
