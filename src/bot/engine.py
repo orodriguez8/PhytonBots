@@ -33,6 +33,20 @@ class TradingState:
 
 state = TradingState()
 
+# ── Cache para posiciones cerradas (evita spam a la API de Alpaca) ────────────
+_closed_cache = []
+_closed_cache_ts = 0.0
+CLOSED_CACHE_TTL = 60  # segundos
+
+def _get_closed_cached():
+    """Devuelve posiciones cerradas usando caché TTL para no sobrecargar la API de Alpaca."""
+    global _closed_cache, _closed_cache_ts
+    now = time.time()
+    if now - _closed_cache_ts > CLOSED_CACHE_TTL:
+        _closed_cache = get_closed_positions()
+        _closed_cache_ts = now
+    return _closed_cache
+
 def push_event(etype, msg, socketio=None):
     """Push an event to the console log and broadcast via WebSocket."""
     evt = {
@@ -108,6 +122,10 @@ def build_summary():
             'bp': 10000.0,
             'pl': 0.0,
             'day_pl': 0.0,
+            'pl_crypto': 0.0,
+            'pl_stocks': 0.0,
+            'pl_crypto_realized': 0.0,
+            'pl_stocks_realized': 0.0,
             'pos': [],
             'closed': [],
             'orders': [],
@@ -136,8 +154,24 @@ def build_summary():
                 total_open_pl = sum(p['p'] for p in data['pos'])
                 data['pl'] = safe_float(total_open_pl)
 
-                data['closed'] = get_closed_positions()
                 data['orders'] = get_orders()
+
+        # ── Desglose P/L: Crypto vs Acciones ──────────────────────────────────
+        def _is_crypto(sym):
+            return any(q in str(sym).upper() for q in ['USD', 'USDT', 'USDC', '/'])
+
+        data['pl_crypto'] = safe_float(sum(p['p'] for p in data['pos'] if _is_crypto(p['s'])))
+        data['pl_stocks'] = safe_float(sum(p['p'] for p in data['pos'] if not _is_crypto(p['s'])))
+
+        # Cargar posiciones cerradas (si hay keys configuradas)
+        if LIVE_ENABLED:
+            data['closed'] = _get_closed_cached()
+
+        cl = data.get('closed', [])
+        data['pl_crypto_realized'] = safe_float(sum((c.get('pl') or 0) for c in cl if _is_crypto(c['s']) and c.get('pl') is not None))
+        data['pl_stocks_realized'] = safe_float(sum((c.get('pl') or 0) for c in cl if not _is_crypto(c['s']) and c.get('pl') is not None))
+
+
         return data
     except Exception as e:
         logger.error(f"Error building summary: {traceback.format_exc()}")

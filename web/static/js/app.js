@@ -34,11 +34,13 @@ function requestAuth(title, msg) {
   
   if (titleEl) titleEl.textContent = title || 'Security Access';
   if (msgEl) msgEl.textContent = msg || 'Please enter your PIN to continue.';
+  if (modal) modal.style.display = 'flex';
   if (input) {
     input.value = '';
-    setTimeout(() => input.focus(), 100);
+    setTimeout(() => {
+      try { input.focus(); } catch(e) {}
+    }, 150);
   }
-  if (modal) modal.style.display = 'flex';
 
   return new Promise((resolve) => {
     authPromiseResolve = resolve;
@@ -201,10 +203,26 @@ function updateDashboard(data) {
   if (S.plHistory.length > S.maxSparkline) S.plHistory.shift();
   drawSparkline('plSpark', S.plHistory, dayPl >= 0 ? '#34d399' : '#f87171');
 
-  // 4. Buying Power
+  // 4. Crypto P/L Breakdown
+  const plC = data.pl_crypto || 0;
+  const plCR = data.pl_crypto_realized || 0;
+  updateIfChanged('plCrypto', (plC >= 0 ? '+' : '') + '$' + plC.toFixed(2));
+  const plCEl = document.getElementById('plCrypto');
+  if (plCEl) plCEl.className = 'stat-value ' + (plC >= 0 ? 'up' : 'down');
+  updateIfChanged('plCryptoRealized', 'Realiz.: ' + (plCR >= 0 ? '+' : '') + '$' + plCR.toFixed(2));
+
+  // 5. Stocks P/L Breakdown
+  const plS = data.pl_stocks || 0;
+  const plSR = data.pl_stocks_realized || 0;
+  updateIfChanged('plStocks', (plS >= 0 ? '+' : '') + '$' + plS.toFixed(2));
+  const plSEl = document.getElementById('plStocks');
+  if (plSEl) plSEl.className = 'stat-value ' + (plS >= 0 ? 'up' : 'down');
+  updateIfChanged('plStocksRealized', 'Realiz.: ' + (plSR >= 0 ? '+' : '') + '$' + plSR.toFixed(2));
+
+  // 6. Buying Power
   updateIfChanged('bp', '$' + formatNum(data.bp || 0));
 
-  // 5. Stats Row
+  // 7. Stats Row
   const posCount = (data.pos || []).length;
   const ordCount = (data.orders || []).length;
   updateIfChanged('posCount', String(posCount));
@@ -219,7 +237,7 @@ function updateDashboard(data) {
   updateIfChanged('providerLabel', data.mode || '—');
   S.securityEnabled = data.security_enabled || false;
 
-  // 6. Watchlist (only if changed)
+  // 8. Watchlist (only if changed)
   const watchStr = JSON.stringify(data.summary);
   if (!prev || JSON.stringify(prev.summary) !== watchStr) {
     renderWatchlist(data.summary || {});
@@ -349,7 +367,7 @@ function renderClosed(closed) {
   const el = document.getElementById('closedTable');
   if (!el) return;
   if (!closed || closed.length === 0) {
-    el.innerHTML = '<tr><td colspan="6" class="empty-row">No closed positions yet</td></tr>';
+    el.innerHTML = '<tr><td colspan="7" class="empty-row">No hay actividad todavía</td></tr>';
     return;
   }
   el.innerHTML = closed.map(c => `
@@ -358,10 +376,11 @@ function renderClosed(closed) {
       <td><span class="badge ${c.side === 'BUY' ? 'up' : 'down'}">${c.side}</span></td>
       <td class="mono">${c.q}</td>
       <td class="mono">$${c.p}</td>
+      <td class="mono">${c.entry ? '$' + c.entry : '—'}</td>
       <td class="${(c.pl || 0) >= 0 ? 'up' : 'down'}" style="font-weight:700;font-family:var(--mono)">
-        ${c.side === 'SELL' ? ((c.pl || 0) >= 0 ? '+' : '') + '$' + (c.pl || 0).toFixed(2) : '—'}
+        ${c.pl !== null ? ((c.pl >= 0 ? '+' : '') + '$' + c.pl.toFixed(2)) : '—'}
       </td>
-      <td style="color:var(--dim-2)">${formatTime(c.time)}</td>
+      <td style="color:var(--dim-2);font-size:0.75rem">${formatTime(c.time)}</td>
     </tr>
   `).join('');
 }
@@ -619,8 +638,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Performance Chart (Capital Evolution) ────────────────────
 let currentPerformancePeriod = 'MONTH';
-let perfChart = null;
-let perfSeries = null;
+let _perfChart = null;
+let _perfSeries = null;
 
 async function setPerformancePeriod(period) {
   currentPerformancePeriod = period;
@@ -635,52 +654,68 @@ window.setPerformancePeriod = setPerformancePeriod; // Make global for onclick
 async function refreshPerformanceChart() {
   try {
     const res = await fetch(`/api/portfolio_history?period=${currentPerformancePeriod}`);
+    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
     const data = await res.json();
-    if (data.error) return;
+    if (data.error) {
+       addConsoleLog('error', 'Chart Data Error: ' + data.error);
+       return;
+    }
+    if (!data.length) {
+       console.log('Performance Chart: No data yet for this period.');
+       return;
+    }
     renderPerformanceChart(data);
-  } catch (e) {}
+  } catch (e) {
+    console.error('refreshPerformanceChart failed:', e);
+  }
 }
 
 function renderPerformanceChart(data) {
   const el = document.getElementById('performanceChart');
-  if (!el) return;
+  if (!el || !data || data.length < 2) return; 
 
-  if (!perfChart) {
-    perfChart = LightweightCharts.createChart(el, {
-      width: el.clientWidth,
-      height: 300,
-      layout: {
-        background: { color: 'transparent' },
-        textColor: '#64748b',
-        fontSize: 11,
-      },
-      grid: {
-        vertLines: { color: 'rgba(100, 120, 180, 0.05)' },
-        horzLines: { color: 'rgba(100, 120, 180, 0.05)' },
-      },
-      timeScale: {
-        borderColor: 'rgba(100, 120, 180, 0.1)',
-        timeVisible: true,
-      },
-    });
+  try {
+    if (!_perfChart) {
+      const w = el.clientWidth || 600;
+      _perfChart = LightweightCharts.createChart(el, {
+        width: w,
+        height: 300,
+        layout: {
+          background: { color: 'transparent' },
+          textColor: '#64748b',
+          fontSize: 11,
+        },
+        grid: {
+          vertLines: { color: 'rgba(100, 120, 180, 0.05)' },
+          horzLines: { color: 'rgba(100, 120, 180, 0.05)' },
+        },
+        timeScale: {
+          borderColor: 'rgba(100, 120, 180, 0.1)',
+          timeVisible: true,
+        },
+      });
 
-    perfSeries = perfChart.addAreaSeries({
-      lineColor: '#818cf8',
-      topColor: 'rgba(129, 140, 248, 0.3)',
-      bottomColor: 'rgba(129, 140, 248, 0)',
-      lineWidth: 2,
-    });
+      _perfSeries = _perfChart.addAreaSeries({
+        lineColor: '#818cf8',
+        topColor: 'rgba(129, 140, 248, 0.3)',
+        bottomColor: 'rgba(129, 140, 248, 0)',
+        lineWidth: 2,
+      });
 
-    new ResizeObserver(() => {
-      perfChart.applyOptions({ width: el.clientWidth });
-    }).observe(el);
+      new ResizeObserver(() => {
+        if (_perfChart) _perfChart.applyOptions({ width: el.clientWidth });
+      }).observe(el);
+    }
+
+    const formattedData = data.map(d => ({
+      time: d.time,
+      value: d.value
+    })).sort((a, b) => a.time - b.time);
+
+    _perfSeries.setData(formattedData);
+    _perfChart.timeScale().fitContent();
+  } catch (err) {
+    console.error("renderPerformanceChart error:", err);
   }
-
-  const formattedData = data.map(d => ({
-    time: d.time,
-    value: d.value
-  })).sort((a, b) => a.time - b.time);
-
-  perfSeries.setData(formattedData);
-  perfChart.timeScale().fitContent();
 }
+

@@ -22,6 +22,10 @@ from src.strategies.indicators.rsi            import calcular_rsi, zona_rsi
 from src.strategies.indicators.bollinger      import calcular_bollinger, posicion_en_banda
 from src.strategies.indicators.atr            import calcular_atr
 from src.strategies.indicators.volumen        import calcular_volumen_medio
+from src.strategies.indicators.adx            import calcular_adx
+from src.strategies.indicators.vwap           import calcular_vwap
+from src.strategies.indicators.obv            import calcular_obv
+
 
 from src.strategies.patterns.velas             import detectar_patron
 from src.strategies.strategies.confluencias    import contar_confluencias
@@ -110,6 +114,16 @@ class TradingBot:
         # ATR
         self.indicadores['atr'] = calcular_atr(self.datos)
 
+        # ADX
+        self.indicadores['adx'] = calcular_adx(self.datos)
+
+        # VWAP
+        vwap_series = calcular_vwap(self.datos)
+        self.indicadores['vwap'] = vwap_series
+
+        # OBV
+        self.indicadores['obv'] = calcular_obv(self.datos)
+
         # Volumen Medio
         self.indicadores['volumen_medio'] = calcular_volumen_medio(self.datos)
 
@@ -118,6 +132,9 @@ class TradingBot:
         print("   [OK] RSI (14)")
         print("   [OK] Bandas de Bollinger (20, 2)")
         print("   [OK] ATR (14)")
+        print("   [OK] ADX (14)")
+        print("   [OK] VWAP")
+        print("   [OK] OBV")
         print("   [OK] Volumen Medio (20)")
 
     # ── 2. Detección de patrón de vela ───────────────────────────────────────
@@ -129,11 +146,8 @@ class TradingBot:
     # ── 3. Evaluación de entrada ──────────────────────────────────────────────
     def evaluar_entrada(self) -> dict:
         """
-        Cuenta las confluencias alcistas y bajistas y decide si operar,
-        en qué dirección y con qué gestión de riesgo.
-
-        Returns:
-            Diccionario con la decisión completa de la operación
+        Evalúa la entrada usando el sistema experto de puntuación para acciones
+        o la lógica conservadora para cripto.
         """
         resultado = contar_confluencias(self.datos, self.indicadores, is_crypto=self.is_crypto)
 
@@ -144,34 +158,76 @@ class TradingBot:
 
         precio   = self.datos['close'].iloc[-1]
         atr      = self.indicadores['atr'].iloc[-1]
+        
+        # Umbral dinámico: 7 para acciones, 7.5 para cripto
+        umbral = 7.5 if self.is_crypto else 7.0
+
         decision = {
             'direccion':   'NEUTRAL',
             'total_long':  total_long,
             'total_short': total_short,
             'gestion':     None,
             'razon':       '',
+            'expert_json': None
         }
 
-        # Lógica de decisión: más confluencias en una dirección y supera el mínimo
-        if total_long >= self.min_confluencias and total_long > total_short:
+        # Lógica de decisión
+        if total_long >= umbral and total_long > total_short:
             decision['direccion'] = 'LONG'
             decision['gestion']   = calcular_gestion_riesgo(
                 'LONG', precio, atr, self.capital, riesgo=self.riesgo, is_crypto=self.is_crypto)
-            decision['razon'] = f"Señal LONG con {total_long} confluencias alcistas"
+            decision['razon'] = f"Señal LONG con score {total_long}/10"
 
-        elif total_short >= self.min_confluencias and total_short > total_long:
+        elif total_short >= umbral and total_short > total_long:
             decision['direccion'] = 'SHORT'
             decision['gestion']   = calcular_gestion_riesgo(
                 'SHORT', precio, atr, self.capital, riesgo=self.riesgo, is_crypto=self.is_crypto)
-            decision['razon'] = f"Señal SHORT con {total_short} confluencias bajistas"
+            decision['razon'] = f"Señal SHORT con score {total_short}/10"
 
-        elif total_long >= self.min_confluencias and total_short >= self.min_confluencias:
-            decision['razon'] = "Señales contradictorias — Mercado indeciso, no operar"
-        else:
-            decision['razon'] = (
-                f"Confluencias insuficientes "
-                f"(LONG: {total_long} | SHORT: {total_short} | Mín: {self.min_confluencias})"
-            )
+        # Generar OUTPUT REQUERIDO (JSON) para Acciones
+        if not self.is_crypto:
+            import json
+            expert_output = {
+                "signal": decision['direccion'],
+                "ticker": "STOCK", # Podría pasarse el símbolo
+                "timeframe_bias": {"daily": "N/A", "1h": "N/A"}, # Requiere MTF core
+                "entry_price": round(float(precio), 4),
+                "stop_loss": round(float(decision['gestion']['stop_loss']), 4) if decision['gestion'] else 0,
+                "take_profit_1": round(float(decision['gestion']['take_profit']), 4) if decision['gestion'] else 0,
+                "take_profit_2": round(float(decision['gestion']['take_profit'] * 1.5), 4) if decision['gestion'] else 0,
+                "score": float(max(total_long, total_short)),
+                "position_size_pct": self.riesgo * 100,
+                "confidence": round(max(total_long, total_short) / 10, 2),
+                "reason": decision['razon'],
+                "invalidation": "Cierre bajo EMA200 o cambio de régimen ADX"
+            }
+            print("[EXPERT ANALYSIS JSON]:")
+            print(json.dumps(expert_output, indent=2))
+        
+        elif self.is_crypto:
+            import json
+            adx_val = self.indicadores.get('adx', pd.Series(0, index=self.datos.index)).iloc[-1]
+            regime = "TREND" if adx_val > 25 else "MEAN_REV" if adx_val < 20 else "HYBRID"
+            
+            expert_output = {
+                "signal": decision['direccion'],
+                "ticker": "CRYPTO",
+                "btc_macro": "bull" if self.indicadores['ema_50'].iloc[-1] > self.indicadores['ema_200'].iloc[-1] else "neutral",
+                "regime": regime,
+                "entry_price": round(float(precio), 4),
+                "entry_2_price": round(float(precio * 1.002), 4),
+                "stop_loss": round(float(decision['gestion']['stop_loss']), 4) if decision['gestion'] else 0,
+                "take_profit_1": round(float(decision['gestion']['take_profit']), 4) if decision['gestion'] else 0,
+                "take_profit_2": round(float(decision['gestion']['take_profit'] * 1.6), 4) if decision['gestion'] else 0,
+                "score": float(total_long),
+                "position_size_pct": self.riesgo * 100,
+                "confidence": round(total_long / 10, 2),
+                "reason": decision['razon'],
+                "invalidation": "BTC Bearish flip or RSI divergence against"
+            }
+            decision['expert_json'] = expert_output
+            print("\n[CRYPTO EXPERT JSON]:")
+            print(json.dumps(expert_output, indent=2))
 
         self.decision = decision
         return decision

@@ -2,12 +2,9 @@
 import pandas as pd
 import numpy as np
 import pandas_ta_classic as ta
-import requests
 import logging
 import datetime
 from src.data.alpaca import obtener_datos_alpaca
-from src.data.ccxt import obtener_datos_ccxt
-from src.core.config import TRADING_MODE_CRYPTO
 from src.strategies.patterns.velas import detectar_patron
 
 logger = logging.getLogger(__name__)
@@ -18,274 +15,124 @@ class CryptoAnalyzer:
     Profile: CONSERVATIVE (Score >= 80, Risk 2.0%)
     """
 
-    def __init__(self, symbol='BTC/USD', capital=10000.0, risk_per_trade=0.02):
-        self.symbol = symbol
+    def __init__(self, symbol='BTC/USD', capital=10000.0, risk_per_trade=0.015):
+        self.symbol = symbol.upper()
         self.capital = capital
         self.risk_per_trade = risk_per_trade
         self.df_15m = None
         self.df_1h = None
-        self.score = 0
-        self.confluences = []
-        self.results = {}
+        self.df_4h = None
 
     def fetch_data(self):
-        """Fetches data from Alpaca or CCXT based on config."""
-        is_alpaca = (TRADING_MODE_CRYPTO.upper() == 'ALPACA')
-        
-        if is_alpaca:
-            self.df_2m = obtener_datos_alpaca(self.symbol, limit=500, timeframe='2Min')
-            self.df_1h = obtener_datos_alpaca(self.symbol, limit=500, timeframe='1Hour')
-        else:
-            # Binance / CCXT
-            self.df_2m = obtener_datos_ccxt(self.symbol, limit=500, timeframe='2m')
-            self.df_1h = obtener_datos_ccxt(self.symbol, limit=500, timeframe='1h')
-        
-        if self.df_2m is None or self.df_1h is None or self.df_2m.empty or self.df_1h.empty:
-            return False
-        return True
-
-    def get_fear_and_greed(self):
-        """Fetches the Fear & Greed Index."""
+        """Obtiene datos multi-timeframe (15m, 1h, 4h)."""
         try:
-            r = requests.get("https://api.alternative.me/fng/", timeout=5)
-            if r.status_code == 200:
-                data = r.json()
-                return int(data['data'][0]['value'])
+            self.df_15m = obtener_datos_alpaca(self.symbol, limit=200, timeframe='15Min')
+            self.df_1h = obtener_datos_alpaca(self.symbol, limit=200, timeframe='1Hour')
+            self.df_4h = obtener_datos_alpaca(self.symbol, limit=100, timeframe='1Hour') # Alpaca no da 4h directo, agrupamos o usamos 1h
+            
+            if self.df_15m is None or self.df_1h is None or self.df_4h is None:
+                return False
+            return True
         except Exception as e:
-            logger.error(f"Error fetching F&G: {e}")
-        return 50 # Neutral fallback
-
-    def get_btc_dominance(self):
-        """
-        Placeholder for BTC Dominance. 
-        In a real scenario, this would fetch from CoinGecko or a specific data provider.
-        """
-        # For the sake of the bot logic, we'll return a static/simulated value 
-        # or try to fetch it if a known API is available.
-        return 50.0 
+            logger.error(f"Error fetching Crypto data: {e}")
+            return False
 
     def analyze(self):
         if not self.fetch_data():
-            return self._no_trade_response("Insufficient data")
+            return {"error": "Insufficient data"}
 
-        # --- LAYER 1: MACRO TREND (1h) ---
+        # 1. ANÁLISIS TOP-DOWN
+        # Macro (4h/1h proxy)
         self.df_1h.ta.ema(length=200, append=True)
-        self.df_1h.ta.rsi(length=14, append=True) # Calculemos RSI también en 1h
-        last_1h = self.df_1h.iloc[-1]
-        prev_1h = self.df_1h.iloc[-2]
+        btc_macro = "bull" if self.df_1h['close'].iloc[-1] > self.df_1h['EMA_200'].iloc[-1] else "neutral"
         
-        price_1h = last_1h['close']
-        ema200_1h = last_1h.get('EMA_200')
-        
-        if ema200_1h is None:
-             return self._no_trade_response("Indicator EMA 200 (1h) still calculating...")
-
-        # Structure HH/HL check (simplified)
-        recent_lows = self.df_1h['low'].tail(20).rolling(window=5).min()
-        recent_highs = self.df_1h['high'].tail(20).rolling(window=5).max()
-        uptrend_structure = last_1h['close'] > prev_1h['close'] # Basic check
-
-        macro_bullish = price_1h > ema200_1h
-        if not macro_bullish and price_1h < ema200_1h * 0.99: # Strict filter
-             return self._no_trade_response("Macro trend is bearish (Price < EMA 200 1h)")
-
-        # --- LAYER 2: MOMENTUM & ENTRY (2min) ---
-        df = self.df_2m
+        # 15m Signal Layer
+        df = self.df_15m
         df.ta.ema(length=9, append=True)
         df.ta.ema(length=21, append=True)
         df.ta.ema(length=50, append=True)
         df.ta.ema(length=200, append=True)
         df.ta.rsi(length=14, append=True)
-        df.ta.macd(fast=12, slow=26, signal=9, append=True)
-        df.ta.bbands(length=20, std=2, append=True)
-        df.ta.atr(length=14, append=True)
+        df.ta.macd(append=True)
+        df.ta.adx(length=14, append=True)
         df.ta.vwap(append=True)
-        df.ta.obv(append=True)
-        df['vol_ema20'] = df['volume'].rolling(20).mean()
-
+        df.ta.bbands(append=True)
+        df.ta.atr(append=True)
+        
         last = df.iloc[-1]
         prev = df.iloc[-2]
         
-        # ADX for Market Regime
-        adx = df.ta.adx(length=14)
-        current_adx = adx['ADX_14'].iloc[-1] if adx is not None else 0
-        market_regime = "trending" if current_adx > 25 else "ranging"
+        adx_val = last['ADX_14']
+        regime = "TREND" if adx_val > 25 else "MEAN_REV" if adx_val < 20 else "HYBRID"
 
-        # Scoring Logic
+        # 2. SISTEMA DE PUNTUACIÓN (0-10)
         score = 0
         reasons = []
 
-        # 1. Trend Confirmation (30 pts)
-        trend_pts = 0
-        if 'EMA_200' in last and last['close'] > last['EMA_200']: trend_pts += 10
-        if all(k in last for k in ['EMA_9', 'EMA_21', 'EMA_50']):
-            if last['EMA_9'] > last['EMA_21'] > last['EMA_50']: trend_pts += 10
-        if 'EMA_50' in last and last['close'] > last['EMA_50']: trend_pts += 5
-        if 'EMA_50' in last and 'EMA_200' in last and last['EMA_50'] > last['EMA_200']: trend_pts += 5 # Alignment
+        if btc_macro == "bull":
+            score += 2
+            reasons.append("BTC Macro Bullish")
         
-        score += trend_pts
-        if trend_pts >= 30: reasons.append("Perfect Bullish Trend Alignment (Price > EMA 50/200 1h & 15m)")
-        elif trend_pts >= 20: reasons.append("Strong bullish EMA alignment")
+        # Triple EMA alineada
+        if last['EMA_9'] > last['EMA_21'] > last['EMA_50']:
+            score += 1.5
+            reasons.append("Triple EMA Alignment")
+            
+        # RSI Optima
+        if 45 <= last['RSI_14'] <= 60:
+            score += 1.5
+            reasons.append("RSI in Momentum Zone")
+            
+        # MACD
+        if last['MACDh_12_26_9'] > prev['MACDh_12_26_9'] and last['MACDh_12_26_9'] > 0:
+            score += 1
+            reasons.append("MACD Bullish Expansion")
+            
+        # Vol
+        vol_ma = df['volume'].rolling(20).mean().iloc[-1]
+        if last['volume'] > vol_ma * 1.4:
+            score += 1.5
+            reasons.append("Volume Confirmation (>1.4x)")
+            
+        # Velas
+        pattern = detectar_patron(df)
+        if "Alcista" in pattern:
+            score += 1
+            reasons.append(f"Candlestick Pattern: {pattern}")
+            
+        # Tech Zone
+        if last['close'] > last['VWAP_D']:
+            score += 1.5
+            reasons.append("Above VWAP Support")
 
-        # 2. Momentum (25 pts)
-        mom_pts = 0
-        rsi_val = last.get('RSI_14', last.get('RSI_14_CLOSE', 50))
-        if rsi_val > 50 and rsi_val < 70: mom_pts += 10
-        
-        macd_val = last.get('MACD_12_26_9', 0)
-        macd_sig = last.get('MACDs_12_26_9', 0)
-        if macd_val > macd_sig: mom_pts += 10
-        
-        vol_ema = last.get('vol_ema20', 0)
-        if last['volume'] > vol_ema: mom_pts += 5
-        score += mom_pts
-        if mom_pts >= 15: reasons.append("Positive momentum (RSI/MACD)")
+        signal = "LONG" if score >= 7.5 else "HOLD"
 
-        # 3. Value Zone (20 pts)
-        val_pts = 0
-        if last['close'] > last['VWAP_D']: val_pts += 5
-        
-        # Fibonacci Retracement (Last 100 bars swing)
-        swing_high = df['high'].tail(100).max()
-        swing_low = df['low'].tail(100).min()
-        range_fib = swing_high - swing_low
-        fib_618 = swing_low + (0.618 * range_fib)
-        fib_500 = swing_low + (0.500 * range_fib)
-        
-        # Near key fib level? (within 0.5%)
-        if abs(last['close'] - fib_618) / last['close'] < 0.005: 
-            val_pts += 10
-            reasons.append("Price at 0.618 Fibonacci level")
-        elif abs(last['close'] - fib_500) / last['close'] < 0.005:
-            val_pts += 5
-            reasons.append("Price at 0.500 Fibonacci level")
-
-        # Near BB lower band?
-        bbl = last.get('BBL_20_2.0')
-        if bbl and last['close'] < bbl * 1.01: val_pts += 5
-        
-        score += val_pts
-        if val_pts >= 10 and "Fibonacci" not in reasons: reasons.append("Price in value zone (VWAP/Fib/BB)")
-
-        # 4. Patterns & Divergences (15 pts)
-        pat_pts = 0
-        
-        # Advanced patterns from velas.py
-        p_name = detectar_patron(df)
-        if "Alcista" in p_name or "Martillo" in p_name:
-            pat_pts += 15
-            reasons.append(f"Pattern detected: {p_name}")
-        elif "Doji" in p_name:
-            pat_pts += 5
-            reasons.append(f"Indecision: {p_name}")
-
-        # RSI Divergence (Very basic: price lower low, RSI higher low over 10 bars)
-        rsi_prev = prev.get('RSI_14', prev.get('RSI_14_CLOSE', 50))
-        if last['close'] < prev['close'] and rsi_val > rsi_prev and rsi_val < 40:
-            pat_pts += 10
-            if "Pattern detected" not in str(reasons): reasons.append("Potential Bullish Divergence (RSI)")
-        
-        score += min(pat_pts, 15)
-
-        # 5. Market Context (10 pts)
-        fng = self.get_fear_and_greed()
-        ctx_pts = 0
-        if fng < 40: ctx_pts += 10 # Buy fear
-        elif fng < 60: ctx_pts += 5
-        score += ctx_pts
-        if ctx_pts >= 5: reasons.append(f"F&G Index: {fng} (Opportunities)")
-
-        # --- SAFETY FILTERS ---
-        if fng > 80: return self._no_trade_response("Fear & Greed Index > 80 (Too Greedy)")
-        
-        rsi_2m = last.get('RSI_14', last.get('RSI_14_CLOSE', 0))
-        rsi_1h = last_1h.get('RSI_14', last_1h.get('RSI_14_CLOSE', 0))
-        
-        if rsi_2m > 75: return self._no_trade_response("RSI 2m Overbought (>75)")
-        if rsi_1h > 75: return self._no_trade_response("RSI 1h Overbought (>75)")
-        
-        vol_avg = last.get('vol_ema20', 0)
-        if last['volume'] < vol_avg * 0.7: return self._no_trade_response("Low volume (<70% avg)")
-        
-        # Conservative Spread Filter (0.3%) 
-        # Since we don't have orderbook in bars, we'll simulate or add a placeholder
-        # In a real scenario, this would check 'bid' and 'ask' prices.
-        spread_pct = 0.001 # Simulated 0.1%
-        if spread_pct > 0.003: return self._no_trade_response("Spread too high (>0.3%)")
-        
-        # Final Decision
-        signal = "NO_TRADE"
-        if score >= 80:
-            signal = "LONG"
-        elif score >= 70:
-            signal = "WAIT"
-            reasons.append("Score above 70, waiting for more confluence (Min 80 for CONSERVATIVE)")
-
-        # Position Management
+        # 3. GESTIÓN
         entry_price = float(last['close'])
-        atr = float(last.get('ATRr_14', entry_price * 0.02)) # ATR fallback
-        # More conservative stop loss: 2.0 * ATR
-        stop_loss = entry_price - (2.0 * atr)
+        atr = last['ATRr_14']
         
-        # Targets based on R:R 2:1, 3:1, 5:1
-        tp1 = entry_price + (2 * (entry_price - stop_loss))
-        tp2 = entry_price + (3 * (entry_price - stop_loss))
-        tp3 = entry_price + (5 * (entry_price - stop_loss))
-        
-        rr = (tp1 - entry_price) / (entry_price - stop_loss) if (entry_price - stop_loss) != 0 else 0
-        
-        # Position sizing: 2.0% of capital on SL
-        risk_amount = self.capital * self.risk_per_trade
-        sl_distance = entry_price - stop_loss
-        if sl_distance > 0:
-            qty = risk_amount / sl_distance
-            pos_size_pct = (qty * entry_price / self.capital) * 100
-        else:
-            pos_size_pct = 0
+        # Stop inicial: Estructura
+        stop_loss = entry_price - (atr * 2.0)
+        tp1 = entry_price + (atr * 2.5)
+        tp2 = entry_price + (atr * 4.0)
 
-        response = {
-            "symbol": self.symbol,
+        return {
             "signal": signal,
-            "confidence_score": int(score),
+            "ticker": self.symbol,
+            "btc_macro": btc_macro,
+            "regime": regime,
             "entry_price": round(entry_price, 4),
+            "entry_2_price": round(entry_price * 1.002, 4),
             "stop_loss": round(stop_loss, 4),
             "take_profit_1": round(tp1, 4),
             "take_profit_2": round(tp2, 4),
-            "take_profit_3": round(tp3, 4),
-            "position_size_pct": round(pos_size_pct, 2),
-            "risk_reward_ratio": round(rr, 2),
-            "timeframe": "2min",
-            "market_regime": market_regime,
-            "key_reasons": reasons,
-            "invalidation_conditions": ["Price breaks below EMA 200 (1h)", "RSI div bearish", "Volume drop > 50%"],
-            "hold_duration_estimate": "30m - 2h",
-            "urgency": "immediate" if score >= 85 else "next_candle" if score >= 75 else "monitor"
-        }
-
-        return response
-
-    def _no_trade_response(self, reason):
-        return {
-            "symbol": self.symbol,
-            "signal": "NO_TRADE",
-            "confidence_score": 0,
-            "entry_price": 0,
-            "stop_loss": 0,
-            "take_profit_1": 0,
-            "take_profit_2": 0,
-            "take_profit_3": 0,
-            "position_size_pct": 0,
-            "risk_reward_ratio": 0,
-            "timeframe": "2min",
-            "market_regime": "unknown",
-            "key_reasons": [reason],
-            "invalidation_conditions": [],
-            "hold_duration_estimate": "N/A",
-            "urgency": "monitor"
+            "score": float(score),
+            "position_size_pct": self.risk_per_trade * 100,
+            "confidence": round(score / 10, 2),
+            "reason": ", ".join(reasons),
+            "invalidation": "Price drops below EMA 200 or RSI bearish divergence"
         }
 
 if __name__ == "__main__":
     analyzer = CryptoAnalyzer('BTC/USD')
-    result = analyzer.analyze()
-    import json
-    print(json.dumps(result, indent=2))
+    print(analyzer.analyze())

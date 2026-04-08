@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
@@ -96,6 +96,16 @@
                     <span class="stat-value" id="openPl" style="font-size:1.2rem">$0.00</span>
                 </div>
                 <div class="stat-card">
+                    <span class="stat-label">₿ Crypto P/L</span>
+                    <span class="stat-value" id="plCrypto" style="font-size:1rem">$0.00</span>
+                    <span class="stat-sub" id="plCryptoRealized" style="font-size:0.65rem">Realiz.: $0.00</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">📈 Acciones P/L</span>
+                    <span class="stat-value" id="plStocks" style="font-size:1rem">$0.00</span>
+                    <span class="stat-sub" id="plStocksRealized" style="font-size:0.65rem">Realiz.: $0.00</span>
+                </div>
+                <div class="stat-card">
                     <span class="stat-label">Pending Orders</span>
                     <span class="stat-value" id="orderCount">0</span>
                 </div>
@@ -164,21 +174,22 @@
                         <i data-lucide="chevron-down" style="width:14px;height:14px"></i>
                     </button>
                 </div>
-                <div id="closedBody" class="collapsible" style="max-height:400px">
+                <div id="closedBody" class="collapsible" style="max-height:500px">
                     <div class="table-wrap">
                         <table>
                             <thead>
                                 <tr>
                                     <th>Symbol</th>
-                                    <th>Side</th>
+                                    <th>Tipo</th>
                                     <th>Qty</th>
-                                    <th>Price</th>
-                                    <th>P/L Realized</th>
-                                    <th>Time</th>
+                                    <th>Precio</th>
+                                    <th>Entrada</th>
+                                    <th>P/L Realiz.</th>
+                                    <th>Hora</th>
                                 </tr>
                             </thead>
                             <tbody id="closedTable">
-                                <tr><td colspan="6" class="empty-row">No closed positions yet</td></tr>
+                                <tr><td colspan="7" class="empty-row">No hay actividad todavía</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -242,7 +253,7 @@
             <div class="modal-body">
                 <p id="modalMsg">Please enter your PIN to continue.</p>
                 <div class="input-group">
-                    <input type="password" id="modalPin" placeholder="••••" autofocus maxlength="10">
+                    <input type="password" id="modalPin" placeholder="••••" maxlength="10">
                 </div>
             </div>
             <div class="modal-footer">
