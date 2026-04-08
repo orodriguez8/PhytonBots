@@ -638,8 +638,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Performance Chart (Capital Evolution) ────────────────────
 let currentPerformancePeriod = 'MONTH';
-let perfChart = null;
-let perfSeries = null;
+let _perfChart = null;
+let _perfSeries = null;
 
 async function setPerformancePeriod(period) {
   currentPerformancePeriod = period;
@@ -672,46 +672,50 @@ async function refreshPerformanceChart() {
 
 function renderPerformanceChart(data) {
   const el = document.getElementById('performanceChart');
-  if (!el || !data) return;
+  if (!el || !data || data.length < 2) return; 
 
-  if (!perfChart) {
-    const w = el.clientWidth || 600;
-    perfChart = LightweightCharts.createChart(el, {
-      width: w,
-      height: 300,
+  try {
+    if (!_perfChart) {
+      const w = el.clientWidth || 600;
+      _perfChart = LightweightCharts.createChart(el, {
+        width: w,
+        height: 300,
+        layout: {
+          background: { color: 'transparent' },
+          textColor: '#64748b',
+          fontSize: 11,
+        },
+        grid: {
+          vertLines: { color: 'rgba(100, 120, 180, 0.05)' },
+          horzLines: { color: 'rgba(100, 120, 180, 0.05)' },
+        },
+        timeScale: {
+          borderColor: 'rgba(100, 120, 180, 0.1)',
+          timeVisible: true,
+        },
+      });
 
-      layout: {
-        background: { color: 'transparent' },
-        textColor: '#64748b',
-        fontSize: 11,
-      },
-      grid: {
-        vertLines: { color: 'rgba(100, 120, 180, 0.05)' },
-        horzLines: { color: 'rgba(100, 120, 180, 0.05)' },
-      },
-      timeScale: {
-        borderColor: 'rgba(100, 120, 180, 0.1)',
-        timeVisible: true,
-      },
-    });
+      _perfSeries = _perfChart.addAreaSeries({
+        lineColor: '#818cf8',
+        topColor: 'rgba(129, 140, 248, 0.3)',
+        bottomColor: 'rgba(129, 140, 248, 0)',
+        lineWidth: 2,
+      });
 
-    perfSeries = perfChart.addAreaSeries({
-      lineColor: '#818cf8',
-      topColor: 'rgba(129, 140, 248, 0.3)',
-      bottomColor: 'rgba(129, 140, 248, 0)',
-      lineWidth: 2,
-    });
+      new ResizeObserver(() => {
+        if (_perfChart) _perfChart.applyOptions({ width: el.clientWidth });
+      }).observe(el);
+    }
 
-    new ResizeObserver(() => {
-      perfChart.applyOptions({ width: el.clientWidth });
-    }).observe(el);
+    const formattedData = data.map(d => ({
+      time: d.time,
+      value: d.value
+    })).sort((a, b) => a.time - b.time);
+
+    _perfSeries.setData(formattedData);
+    _perfChart.timeScale().fitContent();
+  } catch (err) {
+    console.error("renderPerformanceChart error:", err);
   }
-
-  const formattedData = data.map(d => ({
-    time: d.time,
-    value: d.value
-  })).sort((a, b) => a.time - b.time);
-
-  perfSeries.setData(formattedData);
-  perfChart.timeScale().fitContent();
 }
+
