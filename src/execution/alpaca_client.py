@@ -73,25 +73,21 @@ def obtener_posiciones_abiertas():
 
 def obtener_posiciones_cerradas():
     """
-    Obtiene el historial de actividades de relleno (fills) de Alpaca y los
-    agrupa por operación para calcular el P/L realizado.
-    
-    Bug fix: 'pageSize' no existe en alpaca-trade-api → usar 'count'.
-    Bug fix: 'PTRADE' no es un tipo válido en paper trading → solo 'FILL'.
+    Devuelve el historial completo de fills de Alpaca (BUY + SELL).
+    Calcula P/L realizado para ventas con entrada conocida.
+    Siempre muestra algo mientras haya operaciones en la cuenta.
     """
     try:
         from dateutil import parser
         api = _get_api()
-        
-        # CORRECTO: solo FILL, y el param correcto es 'count' (no 'pageSize')
+
         activities = api.get_activities(
             activity_types='FILL',
             count=100,
             direction='desc'
         )
-        
+
         if not activities:
-            print("INFO obtener_posiciones_cerradas: sin actividades FILL (cuenta nueva o sin operaciones)")
             return []
 
         agrupados = {}
@@ -110,7 +106,6 @@ def obtener_posiciones_cerradas():
             if isinstance(t, str):
                 t = parser.parse(t)
 
-            # Clave única: mismo símbolo + lado + minuto exacto (agrupa fills parciales)
             time_key = t.strftime('%Y-%m-%d %H:%M')
             key = f"{symbol}_{side}_{time_key}"
 
@@ -129,59 +124,38 @@ def obtener_posiciones_cerradas():
         if not agrupados:
             return []
 
-        # Ordenar de más antiguo a más nuevo para casar BUY → SELL
-        sorted_keys = sorted(agrupados.keys(), key=lambda x: agrupados[x]['time'])
-
-        res  = []
-        buys = {}  # guarda el precio medio de entrada por símbolo
-
-        for k in sorted_keys:
-            item  = agrupados[k]
-            avg_p = item['total_val'] / item['q']
-
+        # Casar BUY -> SELL (de antiguo a nuevo) para calcular P/L
+        sorted_asc = sorted(agrupados.values(), key=lambda x: x['time'])
+        buys = {}
+        for item in sorted_asc:
             if item['side'] == 'BUY':
-                buys[item['s']] = avg_p  # actualiza siempre con el último precio de compra
+                buys[item['s']] = round(item['total_val'] / item['q'], 4)
 
-            elif item['side'] == 'SELL':
-                entry = buys.get(item['s'])
-                pl    = round((avg_p - entry) * item['q'], 2) if entry else 0.0
-                res.insert(0, {
-                    's':     item['s'],
-                    'side':  'SELL',
-                    'q':     round(item['q'], 4),
-                    'p':     round(avg_p, 4),
-                    'entry': round(entry, 4) if entry else None,
-                    'pl':    pl,
-                    'time':  item['time']
-                })
+        # Devolver TODAS las actividades (BUY y SELL), mas recientes primero
+        result = []
+        for item in sorted(agrupados.values(), key=lambda x: x['time'], reverse=True):
+            avg_p = round(item['total_val'] / item['q'], 4)
+            entry = buys.get(item['s']) if item['side'] == 'SELL' else None
+            pl    = round((avg_p - entry) * item['q'], 2) if entry is not None else None
 
-        # FALLBACK: si no hay ningún cierre casado, mostrar todas las actividades
-        # (compras activas o ventas sin match) para que el usuario vea algo.
-        if not res:
-            fallback = [
-                {
-                    's':    i['s'],
-                    'side': i['side'],
-                    'q':    round(i['q'], 4),
-                    'p':    round(i['total_val'] / i['q'], 4),
-                    'pl':   0.0,
-                    'time': i['time']
-                }
-                for i in sorted(
-                    agrupados.values(),
-                    key=lambda x: x['time'],
-                    reverse=True
-                )[:15]
-            ]
-            return fallback
+            result.append({
+                's':     item['s'],
+                'side':  item['side'],
+                'q':     round(item['q'], 4),
+                'p':     avg_p,
+                'entry': entry,
+                'pl':    pl,
+                'time':  item['time']
+            })
 
-        return res[:15]
+        return result[:20]
 
     except Exception as e:
         print(f"ERROR en obtener_posiciones_cerradas: {e}")
         import traceback
         traceback.print_exc()
         return []
+
 
 def obtener_ordenes_activas():
     """

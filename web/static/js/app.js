@@ -201,10 +201,26 @@ function updateDashboard(data) {
   if (S.plHistory.length > S.maxSparkline) S.plHistory.shift();
   drawSparkline('plSpark', S.plHistory, dayPl >= 0 ? '#34d399' : '#f87171');
 
-  // 4. Buying Power
+  // 4. Crypto P/L Breakdown
+  const plC = data.pl_crypto || 0;
+  const plCR = data.pl_crypto_realized || 0;
+  updateIfChanged('plCrypto', (plC >= 0 ? '+' : '') + '$' + plC.toFixed(2));
+  const plCEl = document.getElementById('plCrypto');
+  if (plCEl) plCEl.className = 'stat-value ' + (plC >= 0 ? 'up' : 'down');
+  updateIfChanged('plCryptoRealized', 'Realiz.: ' + (plCR >= 0 ? '+' : '') + '$' + plCR.toFixed(2));
+
+  // 5. Stocks P/L Breakdown
+  const plS = data.pl_stocks || 0;
+  const plSR = data.pl_stocks_realized || 0;
+  updateIfChanged('plStocks', (plS >= 0 ? '+' : '') + '$' + plS.toFixed(2));
+  const plSEl = document.getElementById('plStocks');
+  if (plSEl) plSEl.className = 'stat-value ' + (plS >= 0 ? 'up' : 'down');
+  updateIfChanged('plStocksRealized', 'Realiz.: ' + (plSR >= 0 ? '+' : '') + '$' + plSR.toFixed(2));
+
+  // 6. Buying Power
   updateIfChanged('bp', '$' + formatNum(data.bp || 0));
 
-  // 5. Stats Row
+  // 7. Stats Row
   const posCount = (data.pos || []).length;
   const ordCount = (data.orders || []).length;
   updateIfChanged('posCount', String(posCount));
@@ -219,7 +235,7 @@ function updateDashboard(data) {
   updateIfChanged('providerLabel', data.mode || '—');
   S.securityEnabled = data.security_enabled || false;
 
-  // 6. Watchlist (only if changed)
+  // 8. Watchlist (only if changed)
   const watchStr = JSON.stringify(data.summary);
   if (!prev || JSON.stringify(prev.summary) !== watchStr) {
     renderWatchlist(data.summary || {});
@@ -349,7 +365,7 @@ function renderClosed(closed) {
   const el = document.getElementById('closedTable');
   if (!el) return;
   if (!closed || closed.length === 0) {
-    el.innerHTML = '<tr><td colspan="6" class="empty-row">No closed positions yet</td></tr>';
+    el.innerHTML = '<tr><td colspan="7" class="empty-row">No hay actividad todavía</td></tr>';
     return;
   }
   el.innerHTML = closed.map(c => `
@@ -358,10 +374,11 @@ function renderClosed(closed) {
       <td><span class="badge ${c.side === 'BUY' ? 'up' : 'down'}">${c.side}</span></td>
       <td class="mono">${c.q}</td>
       <td class="mono">$${c.p}</td>
+      <td class="mono">${c.entry ? '$' + c.entry : '—'}</td>
       <td class="${(c.pl || 0) >= 0 ? 'up' : 'down'}" style="font-weight:700;font-family:var(--mono)">
-        ${c.side === 'SELL' ? ((c.pl || 0) >= 0 ? '+' : '') + '$' + (c.pl || 0).toFixed(2) : '—'}
+        ${c.pl !== null ? ((c.pl >= 0 ? '+' : '') + '$' + c.pl.toFixed(2)) : '—'}
       </td>
-      <td style="color:var(--dim-2)">${formatTime(c.time)}</td>
+      <td style="color:var(--dim-2);font-size:0.75rem">${formatTime(c.time)}</td>
     </tr>
   `).join('');
 }
