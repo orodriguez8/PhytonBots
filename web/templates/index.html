@@ -85,62 +85,58 @@
 
         <!-- ═══ Main Content ══════════════════════════════════════ -->
         <main class="main-content" id="mainContent">
-            <!-- KPIs Row (Collapsible) -->
-            <div class="panel" id="panelKPIs" style="margin-bottom: 1rem;">
-                <div class="panel-header" style="cursor: pointer; margin-bottom: 0;" onclick="togglePanel('statsRow', this.querySelector('.collapse-btn'))">
-                    <span class="panel-title">
-                        <i data-lucide="bar-chart-3" style="width:14px;height:14px"></i>
-                        Key Performance Indicators
-                    </span>
-                    <button class="collapse-btn collapsed">
-                        <i data-lucide="chevron-down" style="width:14px;height:14px"></i>
-                    </button>
+            <!-- Stats Row (Normal) -->
+            <div class="stats-row" id="statsRow" style="margin-bottom: 1rem;">
+                <div class="stat-card">
+                    <span class="stat-label">Open Positions</span>
+                    <span class="stat-value" id="posCount">0</span>
                 </div>
-                <div class="stats-row collapsible collapsed" id="statsRow" style="margin-top: 1rem;">
-                    <div class="stat-card">
-                        <span class="stat-label">Open Positions</span>
-                        <span class="stat-value" id="posCount">0</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-label">Open P/L</span>
-                        <span class="stat-value" id="openPl" style="font-size:1.2rem">$0.00</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-label">₿ Crypto P/L</span>
-                        <span class="stat-value" id="plCrypto" style="font-size:1rem">$0.00</span>
-                        <span class="stat-sub" id="plCryptoRealized" style="font-size:0.65rem">Realiz.: $0.00</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-label">📈 Acciones P/L</span>
-                        <span class="stat-value" id="plStocks" style="font-size:1rem">$0.00</span>
-                        <span class="stat-sub" id="plStocksRealized" style="font-size:0.65rem">Realiz.: $0.00</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-label">Pending Orders</span>
-                        <span class="stat-value" id="orderCount">0</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-label">Provider</span>
-                        <span class="stat-value" id="providerLabel" style="font-size:1rem">—</span>
-                    </div>
+                <div class="stat-card">
+                    <span class="stat-label">Open P/L</span>
+                    <span class="stat-value" id="openPl" style="font-size:1.2rem">$0.00</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">₿ Crypto P/L</span>
+                    <span class="stat-value" id="plCrypto" style="font-size:1rem">$0.00</span>
+                    <span class="stat-sub" id="plCryptoRealized" style="font-size:0.65rem">Realiz.: $0.00</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">📈 Acciones P/L</span>
+                    <span class="stat-value" id="plStocks" style="font-size:1rem">$0.00</span>
+                    <span class="stat-sub" id="plStocksRealized" style="font-size:0.65rem">Realiz.: $0.00</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Pending Orders</span>
+                    <span class="stat-value" id="orderCount">0</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Provider</span>
+                    <span class="stat-value" id="providerLabel" style="font-size:1rem">—</span>
                 </div>
             </div>
 
-            <!-- Portfolio Performance Chart -->
+            <!-- Portfolio Performance Chart (Collapsible & Collapsed by default) -->
             <div class="panel performance-panel">
-                <div class="panel-header">
+                <div class="panel-header" style="cursor: pointer;" onclick="togglePanel('perfBody', this.querySelector('.collapse-btn'))">
                     <span class="panel-title">
                         <i data-lucide="line-chart" style="width:14px;height:14px"></i>
                         Portfolio Performance
                     </span>
-                    <div class="timeframe-selector" id="tfSelector">
-                        <button class="tf-btn" onclick="setPerformancePeriod('DAY')">Day</button>
-                        <button class="tf-btn active" onclick="setPerformancePeriod('MONTH')">Month</button>
-                        <button class="tf-btn" onclick="setPerformancePeriod('YEAR')">Year</button>
-                        <button class="tf-btn" onclick="setPerformancePeriod('ALL')">All</button>
+                    <div style="display:flex; gap:0.5rem; align-items:center" onclick="event.stopPropagation()">
+                        <div class="timeframe-selector" id="tfSelector">
+                            <button class="tf-btn" onclick="setPerformancePeriod('DAY')">Day</button>
+                            <button class="tf-btn active" onclick="setPerformancePeriod('MONTH')">Month</button>
+                            <button class="tf-btn" onclick="setPerformancePeriod('YEAR')">Year</button>
+                            <button class="tf-btn" onclick="setPerformancePeriod('ALL')">All</button>
+                        </div>
+                        <button class="collapse-btn collapsed">
+                            <i data-lucide="chevron-down" style="width:14px;height:14px"></i>
+                        </button>
                     </div>
                 </div>
-                <div id="performanceChart" class="chart-container" style="height: 300px; padding: 1rem 0;"></div>
+                <div id="perfBody" class="collapsible collapsed">
+                    <div id="performanceChart" class="chart-container" style="height: 300px; padding: 1rem 0;"></div>
+                </div>
             </div>
 
             <!-- Open Positions -->
