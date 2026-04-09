@@ -24,6 +24,9 @@ const S = {
   closedPage: 1,
   closedPageSize: 20,
   fullClosedList: [],
+  openedPage: 1,
+  openedPageSize: 20,
+  fullOpenedList: [],
 };
 
 // ── Auth Modal Logic ──────────────────────────────────────
@@ -252,10 +255,15 @@ function updateDashboard(data) {
     renderPositions(data.pos || []);
   }
 
-  // 8. Closed Positions (only if changed)
+  // 8. History Historical (only if changed)
   const closedStr = JSON.stringify(data.closed);
   if (data.closed !== undefined && (!prev || JSON.stringify(prev.closed) !== closedStr)) {
     renderClosed(data.closed);
+  }
+
+  const openedStr = JSON.stringify(data.opened);
+  if (data.opened !== undefined && (!prev || JSON.stringify(prev.opened) !== openedStr)) {
+    renderOpened(data.opened);
   }
 
   // 9. History
@@ -365,15 +373,14 @@ function renderPositions(pos) {
   }
 }
 
-// ── Closed Positions ──────────────────────────────────────
+// ── Closed & Opened History Tables ───────────────────────
 function renderClosed(closed) {
   if (closed !== undefined && closed !== null) S.fullClosedList = closed;
-  
   const el = document.getElementById('closedTable');
   if (!el) return;
 
   if (!S.fullClosedList || S.fullClosedList.length === 0) {
-    el.innerHTML = '<tr><td colspan="7" class="empty-row">No hay actividad todavía</td></tr>';
+    el.innerHTML = '<tr><td colspan="7" class="empty-row">No trade activity yet</td></tr>';
     const pag = document.getElementById('closedPagination');
     if (pag) pag.style.display = 'none';
     return;
@@ -384,8 +391,6 @@ function renderClosed(closed) {
 
   const totalPages = Math.ceil(S.fullClosedList.length / S.closedPageSize);
   if (S.closedPage > totalPages) S.closedPage = totalPages || 1;
-  if (S.closedPage < 1) S.closedPage = 1;
-
   updateIfChanged('closedCurrentPage', String(S.closedPage));
   updateIfChanged('closedTotalPages', String(totalPages));
 
@@ -395,22 +400,60 @@ function renderClosed(closed) {
   el.innerHTML = pageData.map(c => `
     <tr>
       <td style="font-weight:700">${c.s}</td>
-      <td><span class="badge ${c.side === 'BUY' ? 'up' : 'down'}">${c.side}</span></td>
+      <td><span class="badge down">SELL</span></td>
       <td class="mono">${c.q}</td>
-      <td class="mono">$${c.p}</td>
-      <td class="mono">${c.entry ? '$' + c.entry : '—'}</td>
+      <td class="mono">$${formatNum(c.p)}</td>
+      <td class="mono">$${formatNum(c.entry)}</td>
       <td class="${(c.pl || 0) >= 0 ? 'up' : 'down'}" style="font-weight:700;font-family:var(--mono)">
-        ${c.side === 'SELL' ? ((c.pl || 0) >= 0 ? '+' : '') + '$' + (c.pl || 0).toFixed(2) : '—'}
+        ${((c.pl || 0) >= 0 ? '+' : '')}$${(c.pl || 0).toFixed(2)}
       </td>
       <td style="color:var(--dim-2);font-size:0.75rem">${formatTime(c.time)}</td>
     </tr>
   `).join('');
 
-  // Enable/disable buttons
   const prevBtn = document.getElementById('prevClosedBtn');
   const nextBtn = document.getElementById('nextClosedBtn');
   if (prevBtn) prevBtn.disabled = S.closedPage === 1;
   if (nextBtn) nextBtn.disabled = S.closedPage === totalPages;
+}
+
+function renderOpened(opened) {
+  if (opened !== undefined && opened !== null) S.fullOpenedList = opened;
+  const el = document.getElementById('openedTable');
+  if (!el) return;
+
+  if (!S.fullOpenedList || S.fullOpenedList.length === 0) {
+    el.innerHTML = '<tr><td colspan="5" class="empty-row">No recent openings</td></tr>';
+    const pag = document.getElementById('openedPagination');
+    if (pag) pag.style.display = 'none';
+    return;
+  }
+
+  const pag = document.getElementById('openedPagination');
+  if (pag) pag.style.display = 'flex';
+
+  const totalPages = Math.ceil(S.fullOpenedList.length / S.openedPageSize);
+  if (S.openedPage > totalPages) S.openedPage = totalPages || 1;
+  updateIfChanged('openedCurrentPage', String(S.openedPage));
+  updateIfChanged('openedTotalPages', String(totalPages));
+
+  const start = (S.openedPage - 1) * S.openedPageSize;
+  const pageData = S.fullOpenedList.slice(start, start + S.openedPageSize);
+
+  el.innerHTML = pageData.map(o => `
+    <tr>
+      <td style="font-weight:700">${o.s}</td>
+      <td><span class="badge ${o.side === 'BUY' ? 'up' : 'down'}">${o.side}</span></td>
+      <td class="mono">${o.q}</td>
+      <td class="mono">$${formatNum(o.p)}</td>
+      <td style="color:var(--dim-2);font-size:0.75rem">${formatTime(o.time)}</td>
+    </tr>
+  `).join('');
+
+  const prevBtn = document.getElementById('prevOpenedBtn');
+  const nextBtn = document.getElementById('nextOpenedBtn');
+  if (prevBtn) prevBtn.disabled = S.openedPage === 1;
+  if (nextBtn) nextBtn.disabled = S.openedPage === totalPages;
 }
 
 function changeClosedPage(delta) {
@@ -423,7 +466,18 @@ function changeClosedPage(delta) {
     renderClosed();
   }
 }
+function changeOpenedPage(delta) {
+  const totalPages = Math.ceil(S.fullOpenedList.length / S.openedPageSize);
+  let next = S.openedPage + delta;
+  if (next < 1) next = 1;
+  if (next > totalPages) next = totalPages;
+  if (next !== S.openedPage) {
+    S.openedPage = next;
+    renderOpened();
+  }
+}
 window.changeClosedPage = changeClosedPage;
+window.changeOpenedPage = changeOpenedPage;
 
 // ── History ───────────────────────────────────────────────
 function renderHistory(history) {

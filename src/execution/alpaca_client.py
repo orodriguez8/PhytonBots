@@ -116,41 +116,69 @@ def obtener_posiciones_cerradas():
             agrupados[key]['q'] += qty
             agrupados[key]['total_val'] += qty * price
 
-        res = []
-        buys = {}
+        res_closed = []
+        res_opened = []
         
-        # Ordenamos cronológicamente (antiguo a nuevo)
+        buys = {}   # Para trackear entradas LONG (s -> precio)
+        shorts = {} # Para trackear entradas SHORT (s -> precio)
+        
+        # Ordenamos cronológicamente (antiguo a nuevo) para procesar entradas antes que salidas
         sorted_keys = sorted(agrupados.keys(), key=lambda x: agrupados[x]['time'])
         
         for k in sorted_keys:
             item = agrupados[k]
             avg_p = item['total_val'] / item['q']
+            symbol = item['s']
+            side = item['side']
             
             pl = 0
             entry_p = None
+            is_exit = False
             
-            if item['side'] == 'BUY':
-                buys[item['s']] = avg_p
-            elif item['side'] == 'SELL':
-                entry_p = buys.get(item['s'])
-                if entry_p:
+            if side == 'BUY':
+                # ¿Es un cierre de un corto previo?
+                if symbol in shorts:
+                    entry_p = shorts[symbol]
+                    pl = (entry_p - avg_p) * item['q']
+                    is_exit = True
+                    del shorts[symbol]
+                else:
+                    # Es una apertura LONG
+                    buys[symbol] = avg_p
+            
+            elif side in ['SELL', 'SELL_SHORT']:
+                # ¿Es un cierre de un long previo?
+                if symbol in buys:
+                    entry_p = buys[symbol]
                     pl = (avg_p - entry_p) * item['q']
+                    is_exit = True
+                    del buys[symbol]
+                else:
+                    # Es una apertura SHORT
+                    shorts[symbol] = avg_p
             
-            # INSERTAMOS TODO (Buys y Sells) para que las acciones sean siempre visibles
-            res.insert(0, {
-                's': item['s'],
-                'side': item['side'],
+            data_row = {
+                's': symbol,
+                'side': side,
                 'q': round(item['q'], 4),
                 'p': round(avg_p, 4),
                 'entry': round(entry_p, 4) if entry_p else None,
                 'pl': round(pl, 2),
                 'time': item['time']
-            })
+            }
+            
+            if is_exit:
+                res_closed.insert(0, data_row)
+            else:
+                res_opened.insert(0, data_row)
         
-        return res
+        return {
+            'closed': res_closed,
+            'opened': res_opened
+        }
     except Exception as e:
         print(f"ERROR en obtener_posiciones_cerradas: {e}")
-        return []
+        return {'closed': [], 'opened': []}
 
 def obtener_ordenes_activas():
     """

@@ -33,13 +33,13 @@ class TradingState:
 
 state = TradingState()
 
-# ── Cache para posiciones cerradas (evita spam a la API de Alpaca) ────────────
-_closed_cache = []
+# ── Cache para historial (evita spam a la API de Alpaca) ───────────
+_closed_cache = {'closed': [], 'opened': []}
 _closed_cache_ts = 0.0
 CLOSED_CACHE_TTL = 60  # segundos
 
 def _get_closed_cached():
-    """Devuelve posiciones cerradas usando caché TTL para no sobrecargar la API de Alpaca."""
+    """Devuelve historial usando caché TTL para no sobrecargar la API de Alpaca."""
     global _closed_cache, _closed_cache_ts
     now = time.time()
     if now - _closed_cache_ts > CLOSED_CACHE_TTL:
@@ -128,6 +128,7 @@ def build_summary():
             'pl_stocks_realized': 0.0,
             'pos': [],
             'closed': [],
+            'opened': [],
             'orders': [],
             'security_enabled': bool(BOT_PASSWORD),
         }
@@ -163,9 +164,11 @@ def build_summary():
         data['pl_crypto'] = safe_float(sum(p['p'] for p in data['pos'] if _is_crypto(p['s'])))
         data['pl_stocks'] = safe_float(sum(p['p'] for p in data['pos'] if not _is_crypto(p['s'])))
 
-        # Cargar posiciones cerradas (si hay keys configuradas)
+        # Cargar historial (si hay keys configuradas)
         if LIVE_ENABLED:
-            data['closed'] = _get_closed_cached()
+            hist = _get_closed_cached()
+            data['closed'] = hist.get('closed', [])
+            data['opened'] = hist.get('opened', [])
 
         cl = data.get('closed', [])
         data['pl_crypto_realized'] = safe_float(sum((c.get('pl') or 0) for c in cl if _is_crypto(c['s']) and c.get('pl') is not None))
