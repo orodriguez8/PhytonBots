@@ -47,9 +47,9 @@ STOCK_ATR_SL = 1.8       # Stop Loss flexible (1.8x ATR)
 STOCK_ATR_TP = 3.6       # Take Profit 1:2 Risk/Reward — más alcanzable
 
 # Estrategia AGRESIVA para CRIPTO (Basado en petición del usuario)
-# "Take Profit a la mínima, Stop Loss un poco más abajo para soportar rebotes"
-CRYPTO_ATR_SL = 3.0      # Stop Loss más profundo (3.0x ATR) para soportar volatilidad/rebotes
-CRYPTO_ATR_TP = 0.6      # Take Profit mínimo (0.6x ATR) para asegurar ganancias rápidas
+# "Take Profit a la mínima, Stop Loss MUY lejano para dar tiempo a recuperación"
+CRYPTO_ATR_SL = 8.0      # Stop Loss MUY profundo (8.0x ATR) para aguantar grandes retrocesos
+CRYPTO_ATR_TP = 0.5      # Take Profit mínimo (0.5x ATR) para asegurar ganancias rápidas
 
 
 # --- Vigilancia (Watchlist) ---
