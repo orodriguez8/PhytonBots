@@ -374,6 +374,12 @@ function renderPositions(pos) {
         ${p.p >= 0 ? '+' : ''}$${p.p.toFixed(2)} <span style="opacity:0.6;font-size:0.7rem">(${p.pct.toFixed(2)}%)</span>
       </td>
       <td style="color:var(--dim-2);font-size:0.75rem;white-space:nowrap">${formatTime(p.t)}</td>
+      <td>
+        <button class="btn-sm btn-danger-soft" onclick="closePosition('${p.s}')" title="Close Position">
+          <i data-lucide="x-circle" style="width:12px;height:12px"></i>
+          <span>Close</span>
+        </button>
+      </td>
     </tr>
   `).join('');
 
@@ -389,6 +395,11 @@ function renderPositions(pos) {
           <div class="pos-card-stat"><span class="pos-card-label">Entry</span><span class="pos-card-value">$${p.e}</span></div>
           <div class="pos-card-stat"><span class="pos-card-label">Current</span><span class="pos-card-value">$${p.c}</span></div>
           <div class="pos-card-stat"><span class="pos-card-label">P/L</span><span class="pos-card-value ${p.p >= 0 ? 'up' : 'down'}">${p.p >= 0 ? '+' : ''}$${p.p.toFixed(2)}</span></div>
+        </div>
+        <div class="pos-card-footer" style="padding:0 1rem 1rem">
+          <button class="btn-sm btn-danger" style="width:100%" onclick="closePosition('${p.s}')">
+            Close Position
+          </button>
         </div>
       </div>
     `).join('');
@@ -693,6 +704,44 @@ async function cancelAllOrders() {
     addConsoleLog('error', 'Connection error during cancel.');
   }
 }
+
+async function closePosition(symbol) {
+  if (!confirm(`Are you sure you want to close ${symbol} position completely?`)) return;
+  
+  let pwd = null;
+  if (S.securityEnabled) {
+    pwd = await requestAuth('Confirm Close', `Enter Security PIN to close ${symbol}:`);
+    if (!pwd) return;
+  }
+
+  try {
+    const body = { symbol: symbol };
+    if (pwd) body.password = pwd;
+
+    const res = await fetch('/api/close_position', { 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    
+    if (res.status === 401) {
+      alert('Invalid PIN. Action rejected.');
+      return;
+    }
+
+    const data = await res.json();
+    if (data.ok) {
+        addConsoleLog('order', `Manual close request sent: ${symbol}`);
+    } else {
+        alert('Error: ' + (data.error || 'unknown'));
+        addConsoleLog('error', `Close failed for ${symbol}: ${data.error}`);
+    }
+  } catch (e) {
+    addConsoleLog('error', `Connection error closing result for ${symbol}`);
+  }
+}
+
+window.closePosition = closePosition;
 
 // ── Panel Collapse ────────────────────────────────────────
 function togglePanel(bodyId, btn) {
