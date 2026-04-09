@@ -76,15 +76,15 @@ def obtener_posiciones_cerradas():
     """
     Obtiene el historial de posiciones cerradas recientemente agrupando 'fills' 
     para evitar duplicados visuales y mostrar el P/L real por operación.
+    Aumentamos el page_size para capturar más historial (acciones + crypto).
     """
     try:
         from dateutil import parser
         api = _get_api()
-        # Buscamos 'FILL' y 'PTRADE' (que a veces se usa para cierres)
+        # Buscamos 'FILL' que cubre tanto Acciones como Crypto
         tipos = ['FILL']
-        activities = api.get_activities(activity_types=tipos, page_size=100)
-        
-        # print(f"DEBUG: Encontradas {len(activities)} actividades") # Útil para logs del server
+        # Aumentamos el histórico para evitar que las crypto entierren a las acciones
+        activities = api.get_activities(activity_types=tipos, page_size=500)
         
         agrupados = {}
         for f in activities:
@@ -100,7 +100,9 @@ def obtener_posiciones_cerradas():
             if isinstance(t, str):
                 t = parser.parse(t)
             
-            time_key = t.strftime('%Y-%m-%d %H:%M')
+            # AGRUPACIÓN: Por día y símbolo para juntar ventas múltiples
+            # El usuario pidió: "agrupa las ventas multiples en una venta"
+            time_key = t.strftime('%Y-%m-%d')
             key = f"{symbol}_{side}_{time_key}"
             
             if key not in agrupados:
@@ -117,7 +119,8 @@ def obtener_posiciones_cerradas():
 
         res = []
         buys = {}
-        # Ordenar de antiguo a nuevo para casar P/L correctamente
+        
+        # Ordenamos cronológicamente (antiguo a nuevo) para procesar compras antes que ventas
         sorted_keys = sorted(agrupados.keys(), key=lambda x: agrupados[x]['time'])
         
         for k in sorted_keys:
@@ -125,6 +128,9 @@ def obtener_posiciones_cerradas():
             avg_p = item['total_val'] / item['q']
             
             if item['side'] == 'BUY':
+                # Guardamos el precio medio de compra por símbolo (fallback si hay varias compras)
+                # NOTA: En un bot sofisticado usaríamos FIFO, aquí promediamos o guardamos el último.
+                # Para simplificar y dar el P/L aproximado:
                 buys[item['s']] = avg_p
             elif item['side'] == 'SELL':
                 entry = buys.get(item['s'])
@@ -139,10 +145,9 @@ def obtener_posiciones_cerradas():
                     'time': item['time']
                 })
         
-        # Si NO hay cierres calculados (res vacío), mostrar los últimos movimientos agrupados (FALLBACK)
-        # Esto sirve para que el usuario vea AL MENOS las compras abiertas o ventas sin match.
-        if not res:
-            final_fallback = [{ 
+        # Si NO hay cierres apareados pero sí actividades, mostrar todo agrupado como histórico
+        if not res and agrupados:
+            return [{ 
                 's': i['s'], 
                 'side': i['side'], 
                 'q': round(i['q'], 4), 
@@ -150,7 +155,6 @@ def obtener_posiciones_cerradas():
                 'pl': 0, 
                 'time': i['time'] 
             } for i in sorted(agrupados.values(), key=lambda x: x['time'], reverse=True)]
-            return final_fallback
             
         return res
     except Exception as e:
