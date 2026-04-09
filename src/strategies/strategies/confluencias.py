@@ -107,9 +107,6 @@ def contar_confluencias(datos: pd.DataFrame, indicadores: dict, is_crypto: bool 
             short_confs.append("🔴 Patrón de Impulso Confirmado (+1)")
 
         # Inyectamos el score en el resultado para el bot
-        long_confs.append(f"TOTAL SCORE: {score_long}/10")
-        short_confs.append(f"TOTAL SCORE: {score_short}/10")
-        
         final_long = score_long
         final_short = score_short
 
@@ -165,9 +162,6 @@ def contar_confluencias(datos: pd.DataFrame, indicadores: dict, is_crypto: bool 
 
         # MODO DE MERCADO (ADX)
         regime = "TREND" if adx > 25 else "MEAN_REV" if adx < 20 else "HYBRID"
-        long_confs.append(f"🔍 Régimen detectado: {regime} (ADX: {adx:.1f})")
-        long_confs.append(f"TOTAL SCORE: {score_long}/10")
-        
         final_long = score_long
         final_short = 0
 
@@ -176,4 +170,6 @@ def contar_confluencias(datos: pd.DataFrame, indicadores: dict, is_crypto: bool 
         'short':       short_confs,
         'total_long':  final_long,
         'total_short': final_short,
+        'regime':      regime if 'regime' in locals() else None,
+        'adx':         adx if 'adx' in locals() else None
     }

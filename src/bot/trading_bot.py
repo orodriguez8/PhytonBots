@@ -69,6 +69,8 @@ class TradingBot:
         self.confluencias_short = []
         self.patron            = None
         self.decision          = None
+        self.regime            = None
+        self.adx_val           = 0.0
 
         self._imprimir_cabecera()
 
@@ -155,6 +157,8 @@ class TradingBot:
         self.confluencias_short = resultado['short']
         total_long              = resultado['total_long']
         total_short             = resultado['total_short']
+        self.regime             = resultado.get('regime')
+        self.adx_val            = resultado.get('adx')
 
         precio   = self.datos['close'].iloc[-1]
         atr      = self.indicadores['atr'].iloc[-1]
@@ -295,6 +299,7 @@ class TradingBot:
                 print(f"   {c}")
         else:
             print("   [MISS] Ninguna")
+        print(f"   TOTAL SCORE: {self.decision['total_long']}/10")
 
         print(f"\nCONFLUENCIAS BAJISTAS ({len(self.confluencias_short)}):")
         if self.confluencias_short:
@@ -302,6 +307,10 @@ class TradingBot:
                 print(f"   {c}")
         else:
             print("   [MISS] Ninguna")
+        print(f"   TOTAL SCORE: {self.decision['total_short']}/10")
+
+        if self.regime:
+            print(f"\n🔍 Régimen detectado: {self.regime} (ADX: {self.adx_val:.1f})")
 
         # -- Decisión ---------------------------------------------------------
         print(f"\n{sep}")

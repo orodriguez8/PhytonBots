@@ -20,7 +20,7 @@ BOT_PASSWORD        = os.getenv('BOT_PASSWORD', '').strip()
 # --- Capital y Riesgo ---
 CAPITAL_INICIAL = 10_000.0       # Capital inicial en USD
 RIESGO_POR_OPERACION = 0.01      # Riesgo estándar para Acciones (1%)
-RIESGO_CRYPTO        = 0.15      # Riesgo MUY AGRESIVO para Cripto (15%) - Para aumentar tamaño de posición
+RIESGO_CRYPTO        = 0.02      # Riesgo moderado para Cripto (2%)
 
 # --- Modo de Trading ---
 # 'ALPACA' para Acciones, 'COINBASE' para Cripto (via CCXT)
@@ -46,10 +46,9 @@ else:
 STOCK_ATR_SL = 1.8       # Stop Loss flexible (1.8x ATR)
 STOCK_ATR_TP = 3.6       # Take Profit 1:2 Risk/Reward — más alcanzable
 
-# Estrategia AGRESIVA para CRIPTO (Basado en petición del usuario)
-# "Take Profit a la mínima, Stop Loss MUY lejano para dar tiempo a recuperación"
-CRYPTO_ATR_SL = 8.0      # Stop Loss MUY profundo (8.0x ATR) para aguantar grandes retrocesos
-CRYPTO_ATR_TP = 0.5      # Take Profit mínimo (0.5x ATR) para asegurar ganancias rápidas
+# Estrategia Equilibrada para CRIPTO (Basado en volatilidad)
+CRYPTO_ATR_SL = 2.5      # Stop Loss por debajo de oscilaciones (2.5x ATR)
+CRYPTO_ATR_TP = 5.0      # Take Profit 1:2 Risk/Reward (5.0x ATR)
 
 
 # --- Vigilancia (Watchlist) ---
