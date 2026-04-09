@@ -6,6 +6,7 @@ import logging
 import datetime
 from src.data.alpaca import obtener_datos_alpaca
 from src.strategies.patterns.velas import detectar_patron
+from src.core.config import CRYPTO_ATR_SL, CRYPTO_ATR_TP
 
 logger = logging.getLogger(__name__)
 
@@ -108,14 +109,15 @@ class CryptoAnalyzer:
         # Scalping Threshold (Reduced for more frequency)
         signal = "LONG" if score >= 5.5 else "HOLD"
 
-        # 3. GESTIÓN (Scalping: Small Profits)
+        # 3. GESTIÓN (Basado en configuración central)
         entry_price = float(last['close'])
         atr = last['ATRr_14']
         
-        # Stop inicial: Estructura más ceñida
-        stop_loss = entry_price - (atr * 1.2)
-        tp1 = entry_price + (atr * 0.8)
-        tp2 = entry_price + (atr * 1.5)
+        # Stop inicial y Take Profits basados en CRYPTO_ATR_SL y CRYPTO_ATR_TP
+        stop_loss = entry_price - (atr * CRYPTO_ATR_SL) if signal == "LONG" else entry_price + (atr * CRYPTO_ATR_SL)
+        tp1_dist = atr * CRYPTO_ATR_TP
+        tp1 = entry_price + tp1_dist if signal == "LONG" else entry_price - tp1_dist
+        tp2 = entry_price + (tp1_dist * 1.5) if signal == "LONG" else entry_price - (tp1_dist * 1.5)
 
         return {
             "signal": signal,

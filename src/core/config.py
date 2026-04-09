@@ -44,11 +44,11 @@ else:
 # --- Multiplicadores ATR para Stop Loss y Take Profit ---
 # Estrategia Asimétrica para ACCIONES (Trend Following)
 STOCK_ATR_SL = 1.8       # Stop Loss flexible (1.8x ATR)
-STOCK_ATR_TP = 3.6       # Take Profit 1:2 Risk/Reward — más alcanzable
+STOCK_ATR_TP = 3.0       # Take Profit 1:1.66 Risk/Reward — más alcanzable
 
 # Estrategia Equilibrada para CRIPTO (Basado en volatilidad)
 CRYPTO_ATR_SL = 2.0      # Stop Loss por debajo de oscilaciones (2.0x ATR)
-CRYPTO_ATR_TP = 2.5      # Take Profit 1:2 Risk/Reward (2.5x ATR)
+CRYPTO_ATR_TP = 2.5      # Take Profit 1:1.25 Risk/Reward (2.5x ATR)
 
 
 # --- Vigilancia (Watchlist) ---
