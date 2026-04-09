@@ -19,7 +19,8 @@ BOT_PASSWORD        = os.getenv('BOT_PASSWORD', '').strip()
 
 # --- Capital y Riesgo ---
 CAPITAL_INICIAL = 10_000.0       # Capital inicial en USD
-RIESGO_POR_OPERACION = 0.01      # Reduced risk to 1% for more frequent trades (Scalping)
+RIESGO_POR_OPERACION = 0.01      # Riesgo estándar para Acciones (1%)
+RIESGO_CRYPTO        = 0.05      # Riesgo AGRESIVO para Cripto (5%) - Según petición del usuario
 
 # --- Modo de Trading ---
 # 'ALPACA' para Acciones, 'COINBASE' para Cripto (via CCXT)
@@ -45,10 +46,10 @@ else:
 STOCK_ATR_SL = 1.8       # Stop Loss flexible (1.8x ATR)
 STOCK_ATR_TP = 3.6       # Take Profit 1:2 Risk/Reward — más alcanzable
 
-# Estrategia SCALPING para CRIPTO (Muchas operaciones, pequeños beneficios)
-# Ratio ~1:1 — agresivo para capturar micro-tendencias
-CRYPTO_ATR_SL = 1.2
-CRYPTO_ATR_TP = 1.2
+# Estrategia AGRESIVA para CRIPTO (Basado en petición del usuario)
+# "Take Profit a la mínima, Stop Loss un poco más abajo para soportar rebotes"
+CRYPTO_ATR_SL = 3.0      # Stop Loss más profundo (3.0x ATR) para soportar volatilidad/rebotes
+CRYPTO_ATR_TP = 0.6      # Take Profit mínimo (0.6x ATR) para asegurar ganancias rápidas
 
 
 # --- Vigilancia (Watchlist) ---

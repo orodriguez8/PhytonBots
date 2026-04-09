@@ -7,7 +7,7 @@ from src.utils.helpers import safe_float
 from src.bot.trading_bot import TradingBot
 from src.bot.analyzer_crypto import CryptoAnalyzer
 from src.core.config import (
-    CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS, WATCHLIST,
+    CAPITAL_INICIAL, RIESGO_POR_OPERACION, RIESGO_CRYPTO, MIN_CONFLUENCIAS, WATCHLIST,
     TRADING_MODE_CRYPTO, ALPACA_API_KEY, ALPACA_SECRET_KEY,
     CCXT_API_KEY, CCXT_EXCHANGE_ID, BOT_PASSWORD
 )
@@ -216,7 +216,8 @@ def trading_loop(socketio=None):
                         continue
 
                     # Unificamos todo bajo el mismo TradingBot (que ya tiene logica separada interna)
-                    bot = TradingBot(datos, real_equity, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS, is_crypto=is_crypto)
+                    riesgo_actual = RIESGO_CRYPTO if is_crypto else RIESGO_POR_OPERACION
+                    bot = TradingBot(datos, real_equity, riesgo_actual, MIN_CONFLUENCIAS, is_crypto=is_crypto)
                     bot.ejecutar()
                     dec = bot.decision
                     dir_ = dec['direccion']
