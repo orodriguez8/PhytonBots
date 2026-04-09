@@ -208,8 +208,45 @@ def build_summary():
             data['opened'] = hist.get('opened', [])
 
         cl = data.get('closed', [])
-        data['pl_crypto_realized'] = safe_float(sum((c.get('pl') or 0) for c in cl if _is_crypto(c['s']) and c.get('pl') is not None))
-        data['pl_stocks_realized'] = safe_float(sum((c.get('pl') or 0) for c in cl if not _is_crypto(c['s']) and c.get('pl') is not None))
+        now_dt = datetime.datetime.now(timezone.utc)
+        today_str = now_dt.strftime('%Y-%m-%d')
+        month_str = now_dt.strftime('%Y-%m')
+
+        data['pl_crypto_realized'] = 0.0
+        data['pl_stocks_realized'] = 0.0
+        data['pl_crypto_daily'] = 0.0
+        data['pl_stocks_daily'] = 0.0
+        data['pl_crypto_monthly'] = 0.0
+        data['pl_stocks_monthly'] = 0.0
+
+        for c in cl:
+            pl_val = safe_float(c.get('pl', 0))
+            is_cryp = _is_crypto(c['s'])
+            
+            # Global Realized (from the loaded history)
+            if is_cryp:
+                data['pl_crypto_realized'] += pl_val
+            else:
+                data['pl_stocks_realized'] += pl_val
+
+            # Filter by date
+            c_time = c.get('time', '')
+            if c_time:
+                try:
+                    # Alpaca time is usually ISO with timezone
+                    dt = datetime.datetime.fromisoformat(c_time.replace('Z', '+00:00'))
+                    item_day = dt.strftime('%Y-%m-%d')
+                    item_month = dt.strftime('%Y-%m')
+                    
+                    if item_day == today_str:
+                        if is_cryp: data['pl_crypto_daily'] += pl_val
+                        else: data['pl_stocks_daily'] += pl_val
+                    
+                    if item_month == month_str:
+                        if is_cryp: data['pl_crypto_monthly'] += pl_val
+                        else: data['pl_stocks_monthly'] += pl_val
+                except:
+                    pass
 
 
         return data

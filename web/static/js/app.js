@@ -217,6 +217,17 @@ function updateDashboard(data) {
   if (plCEl) plCEl.className = 'stat-value ' + (plC >= 0 ? 'up' : 'down');
   updateIfChanged('plCryptoRealized', 'Realiz.: ' + (plCR >= 0 ? '+' : '') + '$' + plCR.toFixed(2));
 
+  // --- New Crypto Cards ---
+  const plCD = data.pl_crypto_daily || 0;
+  const plCM = data.pl_crypto_monthly || 0;
+  updateIfChanged('plCryptoDaily', (plCD >= 0 ? '+' : '') + '$' + plCD.toFixed(2));
+  const cdEl = document.getElementById('plCryptoDaily');
+  if (cdEl) cdEl.className = 'stat-value ' + (plCD >= 0 ? 'up' : 'down');
+  
+  updateIfChanged('plCryptoMonthly', (plCM >= 0 ? '+' : '') + '$' + plCM.toFixed(2));
+  const cmEl = document.getElementById('plCryptoMonthly');
+  if (cmEl) cmEl.className = 'stat-value ' + (plCM >= 0 ? 'up' : 'down');
+
   // 5. Stocks P/L Breakdown
   const plS = data.pl_stocks || 0;
   const plSR = data.pl_stocks_realized || 0;
@@ -224,6 +235,17 @@ function updateDashboard(data) {
   const plSEl = document.getElementById('plStocks');
   if (plSEl) plSEl.className = 'stat-value ' + (plS >= 0 ? 'up' : 'down');
   updateIfChanged('plStocksRealized', 'Realiz.: ' + (plSR >= 0 ? '+' : '') + '$' + plSR.toFixed(2));
+
+  // --- New Stocks Cards ---
+  const plSD = data.pl_stocks_daily || 0;
+  const plSM = data.pl_stocks_monthly || 0;
+  updateIfChanged('plStocksDaily', (plSD >= 0 ? '+' : '') + '$' + plSD.toFixed(2));
+  const sdEl = document.getElementById('plStocksDaily');
+  if (sdEl) sdEl.className = 'stat-value ' + (plSD >= 0 ? 'up' : 'down');
+
+  updateIfChanged('plStocksMonthly', (plSM >= 0 ? '+' : '') + '$' + plSM.toFixed(2));
+  const smEl = document.getElementById('plStocksMonthly');
+  if (smEl) smEl.className = 'stat-value ' + (plSM >= 0 ? 'up' : 'down');
 
   // 6. Buying Power
   updateIfChanged('bp', '$' + formatNum(data.bp || 0));
