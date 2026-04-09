@@ -82,7 +82,7 @@ def obtener_posiciones_cerradas():
         api = _get_api()
         # Buscamos 'FILL' y 'PTRADE' (que a veces se usa para cierres)
         tipos = ['FILL']
-        activities = api.get_activities(activity_types=tipos, page_size=500)
+        activities = api.get_activities(activity_types=tipos, page_size=100)
         
         # print(f"DEBUG: Encontradas {len(activities)} actividades") # Útil para logs del server
         

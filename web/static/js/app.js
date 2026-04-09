@@ -254,8 +254,8 @@ function updateDashboard(data) {
 
   // 8. Closed Positions (only if changed)
   const closedStr = JSON.stringify(data.closed);
-  if (!prev || JSON.stringify(prev.closed) !== closedStr) {
-    renderClosed(data.closed || []);
+  if (data.closed !== undefined && (!prev || JSON.stringify(prev.closed) !== closedStr)) {
+    renderClosed(data.closed);
   }
 
   // 9. History
@@ -367,7 +367,7 @@ function renderPositions(pos) {
 
 // ── Closed Positions ──────────────────────────────────────
 function renderClosed(closed) {
-  if (closed) S.fullClosedList = closed;
+  if (closed !== undefined && closed !== null) S.fullClosedList = closed;
   
   const el = document.getElementById('closedTable');
   if (!el) return;
