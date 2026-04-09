@@ -82,8 +82,17 @@ def obtener_posiciones_cerradas():
     try:
         from dateutil import parser
         api = _get_api()
-        # Aumentamos significativamente el rango para capturar entradas de trades antiguos
-        activities = api.get_activities(activity_types=['FILL'], page_size=500)
+        # Buscamos 'FILL' con paginación manual para superar el límite de 100
+        activities = []
+        batch = api.get_activities(activity_types=['FILL'], page_size=100)
+        activities.extend(batch)
+        
+        # Si la primera página está llena, pedimos otra para tener más contexto (200 en total)
+        if len(batch) == 100:
+            last_t = batch[-1].transaction_time
+            # Usamos 'until' para obtener actividades anteriores a la última recibida
+            batch_2 = api.get_activities(activity_types=['FILL'], page_size=100, until=last_t.isoformat())
+            activities.extend(batch_2)
         
         # 1. Transformar y ordenar actividades cronológicamente (antiguo a nuevo)
         raw_fills = []
