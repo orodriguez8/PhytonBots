@@ -1,6 +1,7 @@
 
 import time
 import datetime
+from datetime import timezone
 import traceback
 from src.core.logger import logger
 from src.utils.helpers import safe_float
@@ -109,6 +110,42 @@ def cancel_orders_for_symbol(symbol):
         logger.error(f"Error canceling orders for {symbol}: {e}")
 
 
+def limpiar_ordenes_atascadas(socketio=None):
+    """
+    Busca órdenes de Cripto que lleven más de 60 segundos abiertas (atascadas por slippage)
+    y las cancela para liberar el bot.
+    """
+    if not LIVE_ENABLED or not IS_ALPACA: return
+    
+    try:
+        current_orders = get_orders()
+        now = datetime.datetime.now(timezone.utc)
+        
+        for o in current_orders:
+            # Solo aplicamos limpieza agresiva a Cripto
+            is_crypto = any(q in o['symbol'].upper() for q in ['USD', 'USDT', 'USDC', '/'])
+            if not is_crypto: continue
+            
+            # Parsear fecha de creación (ISO format de Alpaca)
+            try:
+                created_at = datetime.datetime.fromisoformat(o['created_at'].replace('Z', '+00:00'))
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+            except:
+                continue
+                
+            segundos_abierta = (now - created_at).total_seconds()
+            
+            if segundos_abierta > 60: # 1 minuto máximo para mercado cripto
+                logger.info(f"🕒 LIMPIEZA: Cancelando orden atascada de {o['symbol']} ({segundos_abierta:.0f}s abierta)")
+                push_event('warn', f"Stale order cleaned: {o['symbol']} ({segundos_abierta:.0f}s)", socketio)
+                
+                api = alpaca_client._get_api()
+                api.cancel_order(o['id'])
+    except Exception as e:
+        logger.debug(f"Error en limpieza de órdenes: {e}")
+
+
 def build_summary():
     """Build the full dashboard data payload (used by both HTTP and WS)."""
     try:
@@ -194,6 +231,9 @@ def trading_loop(socketio=None):
                     real_equity = float(acc.get('nav', real_equity))
                     buying_power = float(acc.get('margen_libre', real_equity))
                 positions_list = get_positions()
+
+            # Limpiar órdenes atascadas antes de procesar las señales
+            limpiar_ordenes_atascadas(socketio)
 
             # Check Circuit Breaker
             if not IS_ALPACA and get_circuit_breaker_status():
