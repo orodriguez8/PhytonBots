@@ -74,110 +74,120 @@ def obtener_posiciones_abiertas():
 
 def obtener_posiciones_cerradas():
     """
-    Obtiene el historial de posiciones cerradas recientemente agrupando 'fills' 
-    para evitar duplicados visuales y mostrar el P/L real por operación.
-    Aumentamos el page_size para capturar más historial (acciones + crypto).
+    Obtiene el historial de posiciones cerradas recientemente de forma robusta.
+    Implementa un sistema de 'First-In-First-Out' (FIFO) por lotes para calcular el P/L real
+    soportando cierres parciales y múltiples operaciones diarias.
+    Aumentamos el historial a 500 actividades para no perder los precios de entrada.
     """
     try:
         from dateutil import parser
         api = _get_api()
-        # Buscamos 'FILL' que cubre tanto Acciones como Crypto
-        tipos = ['FILL']
-        # Volvemos a 100 según petición del usuario
-        activities = api.get_activities(activity_types=tipos, page_size=100)
+        # Aumentamos significativamente el rango para capturar entradas de trades antiguos
+        activities = api.get_activities(activity_types=['FILL'], page_size=500)
         
-        agrupados = {}
+        # 1. Transformar y ordenar actividades cronológicamente (antiguo a nuevo)
+        raw_fills = []
         for f in activities:
             symbol = getattr(f, 'symbol', '')
             side = getattr(f, 'side', '').upper()
             qty = float(getattr(f, 'qty', 0))
             price = float(getattr(f, 'price', 0))
-            
-            if not symbol or not side or qty <= 0: continue
-            
             t = getattr(f, 'transaction_time', None)
-            if not t: continue
-            if isinstance(t, str):
-                t = parser.parse(t)
+            if not symbol or qty <= 0 or not t: continue
             
-            # AGRUPACIÓN: Por día y símbolo para juntar ventas múltiples
-            time_key = t.strftime('%Y-%m-%d')
-            key = f"{symbol}_{side}_{time_key}"
-            
-            if key not in agrupados:
-                agrupados[key] = {
-                    's': symbol,
-                    'side': side,
-                    'q': 0.0,
-                    'total_val': 0.0,
-                    'time': t.isoformat()
-                }
-            
-            agrupados[key]['q'] += qty
-            agrupados[key]['total_val'] += qty * price
+            if isinstance(t, str): t = parser.parse(t)
+            raw_fills.append({
+                's': symbol, 'side': side, 'q': qty, 'p': price, 't': t
+            })
+        
+        # Ordenar: Lo más antiguo primero para procesar la pila FIFO correctamente
+        raw_fills.sort(key=lambda x: x['t'])
 
+        # 2. Procesar FIFO
+        # queues[symbol] = { 'longs': [ {q, p, t}, ... ], 'shorts': [ {q, p, t}, ... ] }
+        queues = {}
         res_closed = []
         res_opened = []
-        
-        buys = {}   # Para trackear entradas LONG (s -> precio)
-        shorts = {} # Para trackear entradas SHORT (s -> precio)
-        
-        # Ordenamos cronológicamente (antiguo a nuevo) para procesar entradas antes que salidas
-        sorted_keys = sorted(agrupados.keys(), key=lambda x: agrupados[x]['time'])
-        
-        for k in sorted_keys:
-            item = agrupados[k]
-            avg_p = item['total_val'] / item['q']
-            symbol = item['s']
-            side = item['side']
+
+        for f in raw_fills:
+            s = f['s']
+            if s not in queues:
+                queues[s] = {'longs': [], 'shorts': []}
             
-            pl = 0
-            entry_p = None
-            is_exit = False
-            
+            side = f['side']
+            q_to_process = f['q']
+            p_fill = f['p']
+            t_fill = f['t']
+
             if side == 'BUY':
-                # ¿Es un cierre de un corto previo?
-                if symbol in shorts:
-                    entry_p = shorts[symbol]
-                    pl = (entry_p - avg_p) * item['q']
-                    is_exit = True
-                    del shorts[symbol]
-                else:
-                    # Es una apertura LONG
-                    buys[symbol] = avg_p
-            
+                # ¿Estamos cerrando un SHORT previo?
+                while q_to_process > 0 and queues[s]['shorts']:
+                    lot = queues[s]['shorts'][0]
+                    match_q = min(q_to_process, lot['q'])
+                    
+                    # Calcular P/L: (Precio Venta - Precio Compra)
+                    pl_unit = lot['p'] - p_fill
+                    res_closed.append({
+                        's': s, 'side': 'BUY (COVER)', 'q': round(match_q, 4),
+                        'p': round(p_fill, 4), 'entry': round(lot['p'], 4),
+                        'pl': round(pl_unit * match_q, 2), 'time': t_fill.isoformat()
+                    })
+                    
+                    q_to_process -= match_q
+                    lot['q'] -= match_q
+                    if lot['q'] <= 0.00000001:
+                        queues[s]['shorts'].pop(0)
+
+                # Si queda cantidad, es una apertura LONG
+                if q_to_process > 0:
+                    queues[s]['longs'].append({'q': q_to_process, 'p': p_fill, 't': t_fill})
+                    res_opened.append({
+                        's': s, 'side': 'BUY', 'q': round(q_to_process, 4),
+                        'p': round(p_fill, 4), 'time': t_fill.isoformat()
+                    })
+
             elif side in ['SELL', 'SELL_SHORT']:
-                # ¿Es un cierre de un long previo?
-                if symbol in buys:
-                    entry_p = buys[symbol]
-                    pl = (avg_p - entry_p) * item['q']
-                    is_exit = True
-                    del buys[symbol]
-                else:
-                    # Es una apertura SHORT
-                    shorts[symbol] = avg_p
-            
-            data_row = {
-                's': symbol,
-                'side': side,
-                'q': round(item['q'], 4),
-                'p': round(avg_p, 4),
-                'entry': round(entry_p, 4) if entry_p else None,
-                'pl': round(pl, 2),
-                'time': item['time']
-            }
-            
-            if is_exit:
-                res_closed.insert(0, data_row)
-            else:
-                res_opened.insert(0, data_row)
-        
+                # ¿Estamos cerrando un LONG previo? (SELL) o abriendo corto?
+                # Nota: Alpaca usa 'sell' para cerrar long y 'sell_short' para abrir corto.
+                # Pero procesamos ambos contra la cola de longs primero.
+                
+                while q_to_process > 0 and queues[s]['longs'] and side != 'SELL_SHORT':
+                    lot = queues[s]['longs'][0]
+                    match_q = min(q_to_process, lot['q'])
+                    
+                    # Calcular P/L: (Precio Venta - Precio Compra)
+                    pl_unit = p_fill - lot['p']
+                    res_closed.append({
+                        's': s, 'side': 'SELL', 'q': round(match_q, 4),
+                        'p': round(p_fill, 4), 'entry': round(lot['p'], 4),
+                        'pl': round(pl_unit * match_q, 2), 'time': t_fill.isoformat()
+                    })
+                    
+                    q_to_process -= match_q
+                    lot['q'] -= match_q
+                    if lot['q'] <= 0.00000001:
+                        queues[s]['longs'].pop(0)
+
+                # Si queda cantidad (o si es sell_short explícito), es una apertura SHORT
+                if q_to_process > 0:
+                    queues[s]['shorts'].append({'q': q_to_process, 'p': p_fill, 't': t_fill})
+                    res_opened.append({
+                        's': s, 'side': side, 'q': round(q_to_process, 4),
+                        'p': round(p_fill, 4), 'time': t_fill.isoformat()
+                    })
+
+        # 3. Formatear salida final (más reciente primero para la tabla)
+        res_closed.reverse()
+        res_opened.reverse()
+
         return {
             'closed': res_closed,
             'opened': res_opened
         }
     except Exception as e:
+        import traceback
         print(f"ERROR en obtener_posiciones_cerradas: {e}")
+        traceback.print_exc()
         return {'closed': [], 'opened': []}
 
 def obtener_ordenes_activas():

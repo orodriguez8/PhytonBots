@@ -433,7 +433,7 @@ function renderClosed(closed) {
   el.innerHTML = pageData.map(c => `
     <tr>
       <td style="font-weight:700">${c.s}</td>
-      <td><span class="badge down">SELL</span></td>
+      <td><span class="badge ${c.side.includes('BUY') ? 'up' : 'down'}">${c.side}</span></td>
       <td class="mono">${c.q}</td>
       <td class="mono">$${formatNum(c.p)}</td>
       <td class="mono">$${formatNum(c.entry)}</td>
