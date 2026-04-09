@@ -53,8 +53,13 @@ CRYPTO_ATR_TP = 1.2
 
 # --- Vigilancia (Watchlist) ---
 WATCHLIST = [
-    'AAPL', 'MSFT', 'TSLA', 'META', 'AMZN', 'NVDA',
-    'BTC/USD', 'ETH/USD', 'SOL/USD', 'LTC/USD'
+    # --- Acciones más Líquidas (U.S. & ADRs) ---
+    'NVDA', 'TSLA', 'AAPL', 'AMD', 'AMZN', 'MSFT', 'META', 'GOOGL', 'NFLX', 'PLTR',
+    'AVGO', 'SMCI', 'BABA', 'NIO', 'COIN', 'MSTR', 'MARA', 'ARM', 'MU', 'PYPL',
+    'SQ', 'JPM', 'BAC', 'DIS', 'COST', 'WMT', 'LLY', 'UNH', 'V', 'MA',
+    
+    # --- Criptomonedas (vía CCXT/Coinbase) ---
+    'BTC/USD', 'ETH/USD', 'SOL/USD', 'LTC/USD', 'LINK/USD', 'DOT/USD'
 ]
 # Nota: Forex en Alpaca requiere permisos específicos, pero el bot ya lo soporta.
 
