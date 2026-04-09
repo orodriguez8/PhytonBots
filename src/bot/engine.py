@@ -10,7 +10,7 @@ from src.bot.analyzer_crypto import CryptoAnalyzer
 from src.core.config import (
     CAPITAL_INICIAL, RIESGO_POR_OPERACION, RIESGO_CRYPTO, MIN_CONFLUENCIAS, WATCHLIST,
     TRADING_MODE_CRYPTO, ALPACA_API_KEY, ALPACA_SECRET_KEY,
-    CCXT_API_KEY, CCXT_EXCHANGE_ID, BOT_PASSWORD
+    CCXT_API_KEY, CCXT_EXCHANGE_ID, BOT_PASSWORD, CRYPTO_TRADING_ENABLED
 )
 from src.core.health import get_circuit_breaker_status
 from src.risk.management import calcular_gestion_riesgo
@@ -285,6 +285,10 @@ def trading_loop(socketio=None):
             for symbol in WATCHLIST:
                 try:
                     is_crypto = any(q in symbol.upper() for q in ['USD', 'USDT', 'USDC', '/'])
+                    
+                    if is_crypto and not CRYPTO_TRADING_ENABLED:
+                        # logger.debug(f"ℹ️ {symbol}: Trading crypto desactivado.")
+                        continue
                     
                     datos = get_data(symbol)
                     if datos is None or datos.empty:

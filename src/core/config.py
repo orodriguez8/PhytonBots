@@ -21,6 +21,7 @@ BOT_PASSWORD        = os.getenv('BOT_PASSWORD', '').strip()
 CAPITAL_INICIAL = 10_000.0       # Capital inicial en USD
 RIESGO_POR_OPERACION = 0.01      # Riesgo estándar para Acciones (1%)
 RIESGO_CRYPTO        = 0.02      # Riesgo moderado para Cripto (2%)
+CRYPTO_TRADING_ENABLED = False    # Desactiva el trading de cryptos sin borrar el código
 
 # --- Modo de Trading ---
 # 'ALPACA' para Acciones, 'COINBASE' para Cripto (via CCXT)
