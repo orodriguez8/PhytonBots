@@ -20,7 +20,7 @@ BOT_PASSWORD        = os.getenv('BOT_PASSWORD', '').strip()
 # --- Capital y Riesgo ---
 CAPITAL_INICIAL = 10_000.0       # Capital inicial en USD
 RIESGO_POR_OPERACION = 0.01      # Riesgo estándar para Acciones (1%)
-RIESGO_CRYPTO        = 0.05      # Riesgo AGRESIVO para Cripto (5%) - Según petición del usuario
+RIESGO_CRYPTO        = 0.15      # Riesgo MUY AGRESIVO para Cripto (15%) - Para aumentar tamaño de posición
 
 # --- Modo de Trading ---
 # 'ALPACA' para Acciones, 'COINBASE' para Cripto (via CCXT)
