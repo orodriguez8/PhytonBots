@@ -19,7 +19,7 @@ BOT_PASSWORD        = os.getenv('BOT_PASSWORD', '').strip()
 
 # --- Capital y Riesgo ---
 CAPITAL_INICIAL = 10_000.0       # Capital inicial en USD
-RIESGO_POR_OPERACION = 0.015      # Máximo 1.5% del capital por operación (Conservative)
+RIESGO_POR_OPERACION = 0.01      # Reduced risk to 1% for more frequent trades (Scalping)
 
 # --- Modo de Trading ---
 # 'ALPACA' para Acciones, 'COINBASE' para Cripto (via CCXT)
@@ -45,10 +45,10 @@ else:
 STOCK_ATR_SL = 1.8       # Stop Loss flexible (1.8x ATR)
 STOCK_ATR_TP = 3.6       # Take Profit 1:2 Risk/Reward — más alcanzable
 
-# Estrategia Conservadora para CRIPTO (Mean Reversion con filtro macro)
-# Ratio 1:1.5 — conservador para entornos volátiles
-CRYPTO_ATR_SL = 2.0
-CRYPTO_ATR_TP = 3.0
+# Estrategia SCALPING para CRIPTO (Muchas operaciones, pequeños beneficios)
+# Ratio ~1:1 — agresivo para capturar micro-tendencias
+CRYPTO_ATR_SL = 1.2
+CRYPTO_ATR_TP = 1.2
 
 
 # --- Vigilancia (Watchlist) ---
@@ -59,7 +59,7 @@ WATCHLIST = [
 # Nota: Forex en Alpaca requiere permisos específicos, pero el bot ya lo soporta.
 
 # --- Umbral de Confluencias ---
-MIN_CONFLUENCIAS = 7             # Umbral del Sistema Experto (Acciones: Score >= 7)
+MIN_CONFLUENCIAS = 5.5           # Umbral reducido para scalping (Más señales)
 
 # --- Parámetros de Indicadores ---
 PERIODO_EMA_RAPIDA  = 20         # EMA rápida (corto plazo)

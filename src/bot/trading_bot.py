@@ -159,8 +159,8 @@ class TradingBot:
         precio   = self.datos['close'].iloc[-1]
         atr      = self.indicadores['atr'].iloc[-1]
         
-        # Umbral dinámico: 7 para acciones, 7.5 para cripto
-        umbral = 7.5 if self.is_crypto else 7.0
+        # Umbral dinámico basado en la configuración
+        umbral = self.min_confluencias
 
         decision = {
             'direccion':   'NEUTRAL',

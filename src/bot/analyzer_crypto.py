@@ -11,30 +11,30 @@ logger = logging.getLogger(__name__)
 
 class CryptoAnalyzer:
     """
-    Expert Quantitative Technical Analysis Bot for Crypto (LONG positions only).
-    Profile: CONSERVATIVE (Score >= 80, Risk 2.0%)
+    Profile: SCALPING (Score >= 55, Risk 1.0%)
+    Target: Many frequent operations with small profits.
     """
 
     def __init__(self, symbol='BTC/USD', capital=10000.0, risk_per_trade=0.015):
         self.symbol = symbol.upper()
         self.capital = capital
         self.risk_per_trade = risk_per_trade
+        self.df_5m = None
         self.df_15m = None
         self.df_1h = None
-        self.df_4h = None
 
     def fetch_data(self):
-        """Obtiene datos multi-timeframe (15m, 1h, 4h)."""
+        """Obtiene datos multi-timeframe (5m, 15m, 1h)."""
         try:
+            self.df_5m = obtener_datos_alpaca(self.symbol, limit=200, timeframe='5Min')
             self.df_15m = obtener_datos_alpaca(self.symbol, limit=200, timeframe='15Min')
-            self.df_1h = obtener_datos_alpaca(self.symbol, limit=200, timeframe='1Hour')
-            self.df_4h = obtener_datos_alpaca(self.symbol, limit=100, timeframe='1Hour') # Alpaca no da 4h directo, agrupamos o usamos 1h
+            self.df_1h = obtener_datos_alpaca(self.symbol, limit=100, timeframe='1Hour')
             
-            if self.df_15m is None or self.df_1h is None or self.df_4h is None:
+            if self.df_5m is None or self.df_15m is None or self.df_1h is None:
                 return False
             return True
         except Exception as e:
-            logger.error(f"Error fetching Crypto data: {e}")
+            logger.error(f"Error fetching Scalping Crypto data: {e}")
             return False
 
     def analyze(self):
@@ -42,12 +42,12 @@ class CryptoAnalyzer:
             return {"error": "Insufficient data"}
 
         # 1. ANÁLISIS TOP-DOWN
-        # Macro (4h/1h proxy)
+        # Macro (1h proxy)
         self.df_1h.ta.ema(length=200, append=True)
         btc_macro = "bull" if self.df_1h['close'].iloc[-1] > self.df_1h['EMA_200'].iloc[-1] else "neutral"
         
-        # 15m Signal Layer
-        df = self.df_15m
+        # 5m Signal Layer (Scalping)
+        df = self.df_5m
         df.ta.ema(length=9, append=True)
         df.ta.ema(length=21, append=True)
         df.ta.ema(length=50, append=True)
@@ -105,16 +105,17 @@ class CryptoAnalyzer:
             score += 1.5
             reasons.append("Above VWAP Support")
 
-        signal = "LONG" if score >= 7.5 else "HOLD"
+        # Scalping Threshold (Reduced for more frequency)
+        signal = "LONG" if score >= 5.5 else "HOLD"
 
-        # 3. GESTIÓN
+        # 3. GESTIÓN (Scalping: Small Profits)
         entry_price = float(last['close'])
         atr = last['ATRr_14']
         
-        # Stop inicial: Estructura
-        stop_loss = entry_price - (atr * 2.0)
-        tp1 = entry_price + (atr * 2.5)
-        tp2 = entry_price + (atr * 4.0)
+        # Stop inicial: Estructura más ceñida
+        stop_loss = entry_price - (atr * 1.2)
+        tp1 = entry_price + (atr * 0.8)
+        tp2 = entry_price + (atr * 1.5)
 
         return {
             "signal": signal,
