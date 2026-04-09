@@ -19,8 +19,12 @@ def build_api_summary():
         return {'error': str(e)}
 
 @app.route('/')
-def home():
+def index():
     return render_template('index.html')
+
+@app.route('/positions')
+def positions():
+    return render_template('positions.html')
 
 @app.route('/api/toggle', methods=['POST'])
 def toggle():
