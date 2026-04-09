@@ -83,8 +83,8 @@ def obtener_posiciones_cerradas():
         api = _get_api()
         # Buscamos 'FILL' que cubre tanto Acciones como Crypto
         tipos = ['FILL']
-        # Aumentamos el histórico para evitar que las crypto entierren a las acciones
-        activities = api.get_activities(activity_types=tipos, page_size=500)
+        # Volvemos a 100 según petición del usuario
+        activities = api.get_activities(activity_types=tipos, page_size=100)
         
         agrupados = {}
         for f in activities:
@@ -101,7 +101,6 @@ def obtener_posiciones_cerradas():
                 t = parser.parse(t)
             
             # AGRUPACIÓN: Por día y símbolo para juntar ventas múltiples
-            # El usuario pidió: "agrupa las ventas multiples en una venta"
             time_key = t.strftime('%Y-%m-%d')
             key = f"{symbol}_{side}_{time_key}"
             
@@ -120,42 +119,34 @@ def obtener_posiciones_cerradas():
         res = []
         buys = {}
         
-        # Ordenamos cronológicamente (antiguo a nuevo) para procesar compras antes que ventas
+        # Ordenamos cronológicamente (antiguo a nuevo)
         sorted_keys = sorted(agrupados.keys(), key=lambda x: agrupados[x]['time'])
         
         for k in sorted_keys:
             item = agrupados[k]
             avg_p = item['total_val'] / item['q']
             
+            pl = 0
+            entry_p = None
+            
             if item['side'] == 'BUY':
-                # Guardamos el precio medio de compra por símbolo (fallback si hay varias compras)
-                # NOTA: En un bot sofisticado usaríamos FIFO, aquí promediamos o guardamos el último.
-                # Para simplificar y dar el P/L aproximado:
                 buys[item['s']] = avg_p
             elif item['side'] == 'SELL':
-                entry = buys.get(item['s'])
-                pl = (avg_p - entry) * item['q'] if entry else 0
-                res.insert(0, {
-                    's': item['s'],
-                    'side': 'SELL',
-                    'q': round(item['q'], 4),
-                    'p': round(avg_p, 4),
-                    'entry': round(entry, 4) if entry else None,
-                    'pl': round(pl, 2),
-                    'time': item['time']
-                })
-        
-        # Si NO hay cierres apareados pero sí actividades, mostrar todo agrupado como histórico
-        if not res and agrupados:
-            return [{ 
-                's': i['s'], 
-                'side': i['side'], 
-                'q': round(i['q'], 4), 
-                'p': round(i['total_val']/i['q'], 4), 
-                'pl': 0, 
-                'time': i['time'] 
-            } for i in sorted(agrupados.values(), key=lambda x: x['time'], reverse=True)]
+                entry_p = buys.get(item['s'])
+                if entry_p:
+                    pl = (avg_p - entry_p) * item['q']
             
+            # INSERTAMOS TODO (Buys y Sells) para que las acciones sean siempre visibles
+            res.insert(0, {
+                's': item['s'],
+                'side': item['side'],
+                'q': round(item['q'], 4),
+                'p': round(avg_p, 4),
+                'entry': round(entry_p, 4) if entry_p else None,
+                'pl': round(pl, 2),
+                'time': item['time']
+            })
+        
         return res
     except Exception as e:
         print(f"ERROR en obtener_posiciones_cerradas: {e}")
