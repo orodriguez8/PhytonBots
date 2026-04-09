@@ -21,6 +21,9 @@ const S = {
   maxReconnect: 50,
   pollFallbackId: null,
   securityEnabled: false,
+  closedPage: 1,
+  closedPageSize: 20,
+  fullClosedList: [],
 };
 
 // ── Auth Modal Logic ──────────────────────────────────────
@@ -364,13 +367,32 @@ function renderPositions(pos) {
 
 // ── Closed Positions ──────────────────────────────────────
 function renderClosed(closed) {
+  if (closed) S.fullClosedList = closed;
+  
   const el = document.getElementById('closedTable');
   if (!el) return;
-  if (!closed || closed.length === 0) {
+
+  if (!S.fullClosedList || S.fullClosedList.length === 0) {
     el.innerHTML = '<tr><td colspan="7" class="empty-row">No hay actividad todavía</td></tr>';
+    const pag = document.getElementById('closedPagination');
+    if (pag) pag.style.display = 'none';
     return;
   }
-  el.innerHTML = closed.map(c => `
+
+  const pag = document.getElementById('closedPagination');
+  if (pag) pag.style.display = 'flex';
+
+  const totalPages = Math.ceil(S.fullClosedList.length / S.closedPageSize);
+  if (S.closedPage > totalPages) S.closedPage = totalPages || 1;
+  if (S.closedPage < 1) S.closedPage = 1;
+
+  updateIfChanged('closedCurrentPage', String(S.closedPage));
+  updateIfChanged('closedTotalPages', String(totalPages));
+
+  const start = (S.closedPage - 1) * S.closedPageSize;
+  const pageData = S.fullClosedList.slice(start, start + S.closedPageSize);
+
+  el.innerHTML = pageData.map(c => `
     <tr>
       <td style="font-weight:700">${c.s}</td>
       <td><span class="badge ${c.side === 'BUY' ? 'up' : 'down'}">${c.side}</span></td>
@@ -383,7 +405,25 @@ function renderClosed(closed) {
       <td style="color:var(--dim-2);font-size:0.75rem">${formatTime(c.time)}</td>
     </tr>
   `).join('');
+
+  // Enable/disable buttons
+  const prevBtn = document.getElementById('prevClosedBtn');
+  const nextBtn = document.getElementById('nextClosedBtn');
+  if (prevBtn) prevBtn.disabled = S.closedPage === 1;
+  if (nextBtn) nextBtn.disabled = S.closedPage === totalPages;
 }
+
+function changeClosedPage(delta) {
+  const totalPages = Math.ceil(S.fullClosedList.length / S.closedPageSize);
+  let next = S.closedPage + delta;
+  if (next < 1) next = 1;
+  if (next > totalPages) next = totalPages;
+  if (next !== S.closedPage) {
+    S.closedPage = next;
+    renderClosed();
+  }
+}
+window.changeClosedPage = changeClosedPage;
 
 // ── History ───────────────────────────────────────────────
 function renderHistory(history) {

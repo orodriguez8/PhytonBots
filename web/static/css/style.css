@@ -924,3 +924,25 @@ td.mono { font-family: var(--mono); font-size: 0.75rem; }
   color: var(--dim);
 }
 .btn-secondary:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
+/* ── Pagination Controls ────────────────────────────────── */
+.pagination-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0.5rem;
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+.page-info {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--dim-2);
+}
+.pagination-btns {
+  display: flex;
+  gap: 0.5rem;
+}
+.pagination-btns button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}

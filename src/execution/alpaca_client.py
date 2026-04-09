@@ -82,7 +82,7 @@ def obtener_posiciones_cerradas():
         api = _get_api()
         # Buscamos 'FILL' y 'PTRADE' (que a veces se usa para cierres)
         tipos = ['FILL']
-        activities = api.get_activities(activity_types=tipos, page_size=100)
+        activities = api.get_activities(activity_types=tipos, page_size=500)
         
         # print(f"DEBUG: Encontradas {len(activities)} actividades") # Útil para logs del server
         
@@ -149,10 +149,10 @@ def obtener_posiciones_cerradas():
                 'p': round(i['total_val']/i['q'], 4), 
                 'pl': 0, 
                 'time': i['time'] 
-            } for i in sorted(agrupados.values(), key=lambda x: x['time'], reverse=True)[:10]]
+            } for i in sorted(agrupados.values(), key=lambda x: x['time'], reverse=True)]
             return final_fallback
             
-        return res[:10]
+        return res
     except Exception as e:
         print(f"ERROR en obtener_posiciones_cerradas: {e}")
         return []
