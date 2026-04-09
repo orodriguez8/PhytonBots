@@ -44,7 +44,7 @@ class CryptoAnalyzer:
         # 1. ANÁLISIS TOP-DOWN
         # Macro (1h proxy)
         self.df_1h.ta.ema(length=200, append=True)
-        btc_macro = "bull" if self.df_1h['close'].iloc[-1] > self.df_1h['EMA_200'].iloc[-1] else "neutral"
+        macro_trend = "bull" if self.df_1h['close'].iloc[-1] > self.df_1h['EMA_200'].iloc[-1] else "neutral"
         
         # 5m Signal Layer (Scalping)
         df = self.df_5m
@@ -69,9 +69,9 @@ class CryptoAnalyzer:
         score = 0
         reasons = []
 
-        if btc_macro == "bull":
+        if macro_trend == "bull":
             score += 2
-            reasons.append("BTC Macro Bullish")
+            reasons.append("Macro Trend Bullish")
         
         # Triple EMA alineada
         if last['EMA_9'] > last['EMA_21'] > last['EMA_50']:
@@ -120,7 +120,7 @@ class CryptoAnalyzer:
         return {
             "signal": signal,
             "ticker": self.symbol,
-            "btc_macro": btc_macro,
+            "macro_trend": macro_trend,
             "regime": regime,
             "entry_price": round(entry_price, 4),
             "entry_2_price": round(entry_price * 1.002, 4),

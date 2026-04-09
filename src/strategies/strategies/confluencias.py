@@ -123,10 +123,10 @@ def contar_confluencias(datos: pd.DataFrame, indicadores: dict, is_crypto: bool 
         adx  = indicadores.get('adx', pd.Series(0, index=datos.index)).iloc[-1]
         vwap = indicadores.get('vwap', datos['close']).iloc[-1]
         
-        # 1. BTC EN TENDENCIA FAVORABLE (Proxy: e50 > e200 en 15m como indicador de mercado)
+        # 1. TENDENCIA MACRO FAVORABLE (Proxy: e50 > e200 en 15m como indicador local)
         if e50 > e200:
             score_long += 2
-            long_confs.append("✅ BTC/Mercado en Tendencia Favorable (+2)")
+            long_confs.append("✅ Tendencia Macro Favorable (Local) (+2)")
         
         # 2. TRIPLE EMA ALINEADA (9 > 21 > 50): +1.5
         if e9.iloc[-1] > e21.iloc[-1] > e50:

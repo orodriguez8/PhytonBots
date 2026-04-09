@@ -216,7 +216,7 @@ class TradingBot:
             expert_output = {
                 "signal": decision['direccion'],
                 "ticker": "CRYPTO",
-                "btc_macro": "bull" if self.indicadores['ema_50'].iloc[-1] > self.indicadores['ema_200'].iloc[-1] else "neutral",
+                "macro_trend": "bull" if self.indicadores['ema_50'].iloc[-1] > self.indicadores['ema_200'].iloc[-1] else "neutral",
                 "regime": regime,
                 "entry_price": round(float(precio), 4),
                 "entry_2_price": round(float(precio * 1.002), 4),
@@ -227,7 +227,7 @@ class TradingBot:
                 "position_size_pct": self.riesgo * 100,
                 "confidence": round(total_long / 10, 2),
                 "reason": decision['razon'],
-                "invalidation": "BTC Bearish flip or RSI divergence against"
+                "invalidation": "Macro Bearish flip or RSI divergence against"
             }
             decision['expert_json'] = expert_output
             print("\n[CRYPTO EXPERT JSON]:")
