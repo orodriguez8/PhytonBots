@@ -19,7 +19,7 @@ def create_app():
     socketio = SocketIO(
         app,
         cors_allowed_origins="*",
-        async_mode='threading',
+        async_mode='eventlet',
         ping_timeout=30,
         ping_interval=15,
         logger=False,

@@ -1,4 +1,7 @@
 
+import eventlet
+eventlet.monkey_patch()
+
 import threading
 import time
 from src.core.logger import logger
@@ -21,7 +24,7 @@ def ws_data_emitter():
 if __name__ == '__main__':
     logger.info("🚀 Starting Trading Bot System...")
     logger.info(f"   Provider: {PROVIDER}")
-    logger.info(f"   Live: {LIVE_ENABLED}")
+    logger.info(f"   Live: {LIVE_ENABLED} {'(API Keys OK)' if LIVE_ENABLED else '(KEYS MISSING - Check .env or AWS Secrets)'}")
     
     # Start trading loop in daemon thread
     threading.Thread(target=trading_loop, args=(socketio,), daemon=True, name='TradingLoop').start()
