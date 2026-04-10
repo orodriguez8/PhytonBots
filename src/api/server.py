@@ -11,7 +11,8 @@ def create_app():
     root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     template_dir = os.path.join(root_dir, 'web', 'templates')
     # Since we moved static files to templates/ for Amplify compatibility
-    app = Flask(__name__, template_folder=template_dir, static_folder=template_dir)
+    static_dir = os.path.join(root_dir, 'web', 'static')
+    app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'mera-victorino-pro-3.0')
     CORS(app)
     
