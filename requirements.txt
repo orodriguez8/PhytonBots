@@ -1,3 +1,6 @@
+eventlet
+boto3
+pyopenssl
 flask
 flask-cors
 flask-socketio
