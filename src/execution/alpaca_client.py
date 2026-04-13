@@ -5,10 +5,15 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import GetOrdersRequest, MarketOrderRequest, LimitOrderRequest, TakeProfitRequest, StopLossRequest
 from alpaca.trading.enums import OrderSide, TimeInForce, OrderClass, AssetClass, TradeActivityType
 from alpaca.trading.requests import GetOrderByIdRequest, ClosePositionRequest, GetPortfolioHistoryRequest
+# Import variable para evitar errores de versión en las actividades
+ActivitiesRequestClass = None
 try:
-    from alpaca.trading.requests import GetAccountActivitiesRequest as GetActivitiesRequest
+    from alpaca.trading.requests import GetAccountActivitiesRequest as ActivitiesRequestClass
 except ImportError:
-    from alpaca.trading.requests import GetActivitiesRequest
+    try:
+        from alpaca.trading.requests import GetActivitiesRequest as ActivitiesRequestClass
+    except ImportError:
+        ActivitiesRequestClass = None
 
 from src.core.config import ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_PAPER, ALPACA_BASE_URL
 from src.core.logger import logger
@@ -80,11 +85,21 @@ def obtener_posiciones_cerradas():
         client = _get_trading_client()
         
         # Obtenemos actividades de tipo FILL (ejecuciones)
-        req = GetActivitiesRequest(activity_types=[TradeActivityType.FILL])
+        activities = []
         try:
-            activities = client.get_account_activities(filter=req)
-        except AttributeError:
-            activities = client.get_activities(filter_data=req)
+            if ActivitiesRequestClass:
+                req = ActivitiesRequestClass(activity_types=[TradeActivityType.FILL])
+                activities = client.get_account_activities(filter=req)
+            else:
+                # Fallback: intentar sin filtro o con parámetros directos
+                activities = client.get_account_activities({"activity_types": "FILL"})
+        except:
+            try:
+                # Segundo fallback: nombres de método alternativos
+                activities = client.get_activities(activity_types="FILL")
+            except:
+                logger.error("No se pudo recuperar el historial de actividades con ninguna firma conocida.")
+                activities = []
         
         raw_fills = []
         for f in activities:
