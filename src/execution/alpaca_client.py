@@ -85,21 +85,14 @@ def obtener_posiciones_cerradas():
         # Obtenemos actividades de tipo FILL (ejecuciones)
         activities = []
         try:
-            # Fallback dinámico total para el método de actividades
-            method = getattr(client, 'get_account_activities', getattr(client, 'get_activities', None))
-            if not method:
-                raise AttributeError("No se encontró el método de actividades en TradingClient")
-
-            if ActivitiesRequestClass:
-                req = ActivitiesRequestClass(activity_types=[TradeActivityType.FILL])
-                try:
-                    activities = method(filter=req)
-                except:
-                    activities = method(req) # Algunas versiones no usan filter= as kwarg
-            else:
-                activities = method({"activity_types": ["FILL"]})
-        except Exception as e:
-            logger.error(f"Error definitivo en actividades: {e}")
+            # Intentar métodos comunes según versión de SDK
+            if hasattr(client, 'get_account_activities'):
+                req = ActivitiesRequestClass(activity_types=[TradeActivityType.FILL]) if ActivitiesRequestClass else {"activity_types": "FILL"}
+                activities = client.get_account_activities(filter=req) if ActivitiesRequestClass else client.get_account_activities(req)
+            elif hasattr(client, 'get_activities'):
+                activities = client.get_activities(activity_types="FILL")
+        except:
+            # Fallback silencioso para no romper el ciclo del bot
             activities = []
         
         raw_fills = []

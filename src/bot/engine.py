@@ -251,6 +251,7 @@ def build_summary():
 def trading_loop(socketio=None):
     """Main trading loop (runs in background thread)"""
     
+    stream_mgr = None
     # Iniciar stream de eventos (Trade Updates)
     if IS_ALPACA and LIVE_ENABLED:
         try:
@@ -268,6 +269,10 @@ def trading_loop(socketio=None):
             logger.error(f"Error iniciando DataStream: {e}")
 
     while True:
+        # Procesar eventos acumulados del proceso del stream
+        if stream_mgr:
+            stream_mgr.process_incoming_events()
+            
         if state.AUTO_TRADING_ACTIVE:
             real_equity = CAPITAL_INICIAL
             buying_power = real_equity

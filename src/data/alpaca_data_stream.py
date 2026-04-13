@@ -1,80 +1,84 @@
 
-import threading
+import multiprocessing
 import asyncio
 from alpaca.data.live import StockDataStream, CryptoDataStream
 from src.core.config import ALPACA_API_KEY, ALPACA_SECRET_KEY
 from src.core.logger import logger
 
-# Global cache for the latest prices
-LATEST_PRICES = {}
-PRICE_LOCK = threading.Lock()
+# Utilizaremos un proceso separado para los WebSockets
+# para evadir los bugs de bucles de asyncio causados por eventlet.
+# Los precios se compartirán mediante un Manager.dict()
+
+_manager = None
+LATEST_PRICES = None
+
+def _initialize_manager():
+    global _manager, LATEST_PRICES
+    if _manager is None:
+        _manager = multiprocessing.Manager()
+        LATEST_PRICES = _manager.dict()
+
+async def _price_handler(data):
+    try:
+        sym = data.symbol.replace('/', '')
+        LATEST_PRICES[sym] = float(data.price)
+    except Exception as e:
+        pass
+
+def _run_stock_process(symbols, api_key, secret_key, shared_dict):
+    global LATEST_PRICES
+    LATEST_PRICES = shared_dict
+    
+    async def main():
+        try:
+            stream = StockDataStream(api_key, secret_key)
+            stream.subscribe_trades(_price_handler, *symbols)
+            await stream._run_forever()
+        except Exception as e:
+            logger.error(f"Error procesal WebSocket Acciones: {e}")
+
+    asyncio.run(main())
+
+def _run_crypto_process(symbols, api_key, secret_key, shared_dict):
+    global LATEST_PRICES
+    LATEST_PRICES = shared_dict
+    
+    async def main():
+        try:
+            stream = CryptoDataStream(api_key, secret_key)
+            norm_crypto = [s if '/' in s else s.replace('USD', '/USD') for s in symbols]
+            stream.subscribe_trades(_price_handler, *norm_crypto)
+            await stream._run_forever()
+        except Exception as e:
+            logger.error(f"Error procesal WebSocket Cripto: {e}")
+
+    asyncio.run(main())
 
 class AlpacaDataStream:
     def __init__(self, symbols):
+        _initialize_manager()
         self.symbols = symbols
         self.stock_symbols = [s for s in symbols if not any(q in s.upper() for q in ['USD', 'USDT', 'USDC', '/'])]
         self.crypto_symbols = [s for s in symbols if s not in self.stock_symbols]
         
-    async def _handle_trade(self, data):
-        """Handler para recibir el último precio ejecutado."""
-        try:
-            with PRICE_LOCK:
-                # Clean symbol name (e.g. BTC/USD -> BTCUSD for internal consistency)
-                sym = data.symbol.replace('/', '')
-                LATEST_PRICES[sym] = float(data.price)
-        except Exception as e:
-            logger.error(f"Error en _handle_trade: {e}")
-
-    async def _run_stock_stream(self):
-        if not self.stock_symbols: return
-        logger.info(f"📡 Iniciando WebSocket Acciones para {len(self.stock_symbols)} símbolos...")
-        try:
-            stream = StockDataStream(ALPACA_API_KEY, ALPACA_SECRET_KEY)
-            stream.subscribe_trades(self._handle_trade, *self.stock_symbols)
-            await stream._run_forever()
-        except Exception as e:
-            logger.error(f"❌ Error en WebSocket Acciones: {e}")
-
-    async def _run_crypto_stream(self):
-        if not self.crypto_symbols: return
-        logger.info(f"📡 Iniciando WebSocket Cripto para {len(self.crypto_symbols)} símbolos...")
-        try:
-            stream = CryptoDataStream(ALPACA_API_KEY, ALPACA_SECRET_KEY)
-            norm_crypto = [s if '/' in s else s.replace('USD', '/USD') for s in self.crypto_symbols]
-            stream.subscribe_trades(self._handle_trade, *norm_crypto)
-            await stream._run_forever()
-        except Exception as e:
-            logger.error(f"❌ Error en WebSocket Cripto: {e}")
-
-    def _thread_target(self, coro):
-        try:
-            # Intentar resetear la política de loops para este hilo
-            # para evadir la interferencia de eventlet si es posible
-            asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(coro)
-            loop.close()
-        except Exception as e:
-            # Si aún falla, intentamos una aproximación directa sin set_event_loop
-            try:
-                loop = asyncio.new_event_loop()
-                loop.run_until_complete(coro)
-            except Exception as e2:
-                logger.error(f"Fallo crítico lanzando WebSocket: {e2}")
-
     def start(self):
-        """Lanza los hilos para acciones y cripto."""
         if self.stock_symbols:
-            t1 = threading.Thread(target=self._thread_target, args=(self._run_stock_stream(),), daemon=True)
-            t1.start()
+            p1 = multiprocessing.Process(
+                target=_run_stock_process, 
+                args=(self.stock_symbols, ALPACA_API_KEY, ALPACA_SECRET_KEY, LATEST_PRICES),
+                daemon=True
+            )
+            p1.start()
         
         if self.crypto_symbols:
-            t2 = threading.Thread(target=self._thread_target, args=(self._run_crypto_stream(),), daemon=True)
-            t2.start()
+            p2 = multiprocessing.Process(
+                target=_run_crypto_process, 
+                args=(self.crypto_symbols, ALPACA_API_KEY, ALPACA_SECRET_KEY, LATEST_PRICES),
+                daemon=True
+            )
+            p2.start()
 
 def get_latest_price(symbol):
-    """Devuelve el último precio conocido del cache global."""
+    if LATEST_PRICES is None: return None
     norm_sym = symbol.replace('/', '').upper()
-    with PRICE_LOCK:
-        return LATEST_PRICES.get(norm_sym)
+    return LATEST_PRICES.get(norm_sym)
