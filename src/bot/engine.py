@@ -32,6 +32,7 @@ class TradingState:
     def __init__(self):
         self._active = multiprocessing.Value('b', False)
         self.BOT_HISTORY = []
+        self.LAST_RUN_LOG = {}
         self.CONSOLE_EVENTS = []
         self.MAX_CONSOLE = 60
         self.LOCK = threading.Lock()

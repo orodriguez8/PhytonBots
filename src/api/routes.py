@@ -47,12 +47,12 @@ def summary():
 @app.route('/api/toggle', methods=['POST'])
 def toggle():
     logger.info("📩 Recibida petición toggle de bot")
-    # Verificar contraseña si está configurada
-    if BOT_PASSWORD:
+    # Verificar contraseña si está configurada (y no es vacía)
+    if BOT_PASSWORD and len(BOT_PASSWORD) > 0:
         req_data = request.get_json(silent=True) or {}
-        user_pwd = req_data.get('password', '')
+        user_pwd = str(req_data.get('password', '')).strip()
         if user_pwd != BOT_PASSWORD:
-            logger.warning("🚫 PIN Inválido en toggle")
+            logger.warning(f"🚫 PIN Inválido en toggle. Recibido: '{user_pwd}'")
             return jsonify({'ok': False, 'error': 'Invalid PIN'}), 401
     
     state.AUTO_TRADING_ACTIVE = not state.AUTO_TRADING_ACTIVE
