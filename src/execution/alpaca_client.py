@@ -277,7 +277,16 @@ def obtener_historial_cartera(periodo='1M', timeframe='1D'):
     try:
         client = _get_trading_client()
         req = GetPortfolioHistoryRequest(period=periodo, timeframe=timeframe)
-        hist = client.get_portfolio_history(filter_data=req)
+        try:
+            # En algunas versiones es filter_data, en otras es filter, 
+            # y en otras es puramente posicional.
+            hist = client.get_portfolio_history(req)
+        except Exception:
+            try:
+                hist = client.get_portfolio_history(filter_data=req)
+            except:
+                hist = client.get_portfolio_history(filter=req)
+        
         
         res = []
         for i in range(len(hist.timestamp)):

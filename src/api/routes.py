@@ -26,7 +26,23 @@ def index():
 def positions():
     return render_template('positions.html')
 
-@app.route('/api/toggle', methods=['POST'])
+@app.route('/api/status')
+def status():
+    return jsonify({
+        'modo': 'ALPACA' if IS_ALPACA else 'CRYPTO',
+        'auto_trading': state.AUTO_TRADING_ACTIVE,
+        'instrumento': 'PORTFOLIO'
+    })
+
+@app.route('/api/run')
+@app.route('/api/summary')
+def summary():
+    data = build_summary()
+    if 'error' in data:
+        return jsonify(data), 500
+    return jsonify(data)
+
+@app.route('/api/toggle-auto', methods=['POST'])
 def toggle():
     # Verificar contraseña si está configurada
     if BOT_PASSWORD:
@@ -36,14 +52,7 @@ def toggle():
     
     state.AUTO_TRADING_ACTIVE = not state.AUTO_TRADING_ACTIVE
     push_event('info', f"Bot toggled → {'ACTIVE' if state.AUTO_TRADING_ACTIVE else 'STANDBY'}", socketio)
-    return jsonify({'ok': True, 'state': state.AUTO_TRADING_ACTIVE})
-
-@app.route('/api/summary')
-def summary():
-    data = build_summary()
-    if 'error' in data:
-        return jsonify(data), 500
-    return jsonify(data)
+    return jsonify({'ok': True, 'state': state.AUTO_TRADING_ACTIVE, 'auto_trading': state.AUTO_TRADING_ACTIVE})
 
 @app.route('/api/cancel_all', methods=['POST'])
 def cancel_all():
