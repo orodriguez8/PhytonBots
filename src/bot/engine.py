@@ -164,12 +164,16 @@ def build_summary():
             'security_enabled': bool(BOT_PASSWORD),
         }
         if LIVE_ENABLED:
-            acc = get_account()
-            if acc:
-                data['equity'] = safe_float(acc.get('nav', 0))
-                data['bp'] = safe_float(acc.get('margen_libre', 0))
-                data['day_pl'] = safe_float(acc.get('pl', 0))
+            try:
+                acc = get_account()
+                if acc:
+                    data['equity'] = safe_float(acc.get('nav', 0))
+                    data['bp'] = safe_float(acc.get('margen_libre', 0))
+                    data['day_pl'] = safe_float(acc.get('pl', 0))
+            except Exception as e:
+                logger.debug(f"Summary: Error obteniendo cuenta: {e}")
 
+            try:
                 raw_pos = get_positions()
                 data['pos'] = [{
                     's': p['instrumento'],
@@ -182,11 +186,15 @@ def build_summary():
                     'v': safe_float(p.get('valor_total', 0)),
                     't': p.get('fecha_entrada', None)
                 } for p in raw_pos]
+            except Exception as e:
+                logger.debug(f"Summary: Error obteniendo posiciones: {e}")
 
-                total_open_pl = sum(p['p'] for p in data['pos'])
-                data['pl'] = safe_float(total_open_pl)
-
+            data['pl'] = safe_float(sum(p['p'] for p in data['pos']))
+            
+            try:
                 data['orders'] = get_orders()
+            except Exception as e:
+                logger.debug(f"Summary: Error obteniendo ordenes: {e}")
 
         # ── Desglose P/L: Crypto vs Acciones ──────────────────────────────────
         def _is_crypto(sym):
@@ -197,9 +205,12 @@ def build_summary():
 
         # Cargar historial (si hay keys configuradas)
         if LIVE_ENABLED:
-            hist = _get_closed_cached()
-            data['closed'] = hist.get('closed', [])
-            data['opened'] = hist.get('opened', [])
+            try:
+                hist = _get_closed_cached()
+                data['closed'] = hist.get('closed', [])
+                data['opened'] = hist.get('opened', [])
+            except Exception as e:
+                logger.debug(f"Summary: Error obteniendo historial: {e}")
 
         cl = data.get('closed', [])
         now_dt = datetime.datetime.now(timezone.utc)

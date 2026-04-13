@@ -43,10 +43,12 @@ def summary():
     return jsonify(data)
 
 @app.route('/api/toggle-auto', methods=['POST'])
+@app.route('/api/toggle', methods=['POST'])
 def toggle():
     # Verificar contraseña si está configurada
     if BOT_PASSWORD:
-        user_pwd = request.json.get('password', '')
+        req_data = request.get_json(silent=True) or {}
+        user_pwd = req_data.get('password', '')
         if user_pwd != BOT_PASSWORD:
             return jsonify({'ok': False, 'error': 'Invalid PIN'}), 401
     
