@@ -48,15 +48,20 @@ class AlpacaDataStream:
 
     def _thread_target(self, coro):
         try:
-            # Forzar la creación de un nuevo loop en este hilo
-            # ignorando cualquier configuración previa (ej. eventlet)
-            asyncio.set_event_loop(None)
+            # Intentar resetear la política de loops para este hilo
+            # para evadir la interferencia de eventlet si es posible
+            asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             loop.run_until_complete(coro)
             loop.close()
         except Exception as e:
-            logger.error(f"Error en el ciclo asíncrono del stream: {e}")
+            # Si aún falla, intentamos una aproximación directa sin set_event_loop
+            try:
+                loop = asyncio.new_event_loop()
+                loop.run_until_complete(coro)
+            except Exception as e2:
+                logger.error(f"Fallo crítico lanzando WebSocket: {e2}")
 
     def start(self):
         """Lanza los hilos para acciones y cripto."""

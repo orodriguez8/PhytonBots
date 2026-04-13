@@ -85,21 +85,22 @@ def obtener_posiciones_cerradas():
         # Obtenemos actividades de tipo FILL (ejecuciones)
         activities = []
         try:
-            # Intentar varios nombres de campo para el filtro según la versión de alpaca-py
+            # Fallback dinámico total para el método de actividades
+            method = getattr(client, 'get_account_activities', getattr(client, 'get_activities', None))
+            if not method:
+                raise AttributeError("No se encontró el método de actividades en TradingClient")
+
             if ActivitiesRequestClass:
                 req = ActivitiesRequestClass(activity_types=[TradeActivityType.FILL])
                 try:
-                    activities = client.get_account_activities(filter=req)
+                    activities = method(filter=req)
                 except:
-                    activities = client.get_account_activities(req)
+                    activities = method(req) # Algunas versiones no usan filter= as kwarg
             else:
-                activities = client.get_account_activities({"activity_types": ["FILL"]})
+                activities = method({"activity_types": ["FILL"]})
         except Exception as e:
-            try:
-                activities = client.get_activities(activity_types="FILL")
-            except:
-                logger.error(f"Error definitivo en actividades: {e}")
-                activities = []
+            logger.error(f"Error definitivo en actividades: {e}")
+            activities = []
         
         raw_fills = []
         for f in activities:
@@ -278,7 +279,7 @@ def obtener_historial_cartera(periodo='1M', timeframe='1D'):
     try:
         client = _get_trading_client()
         req = GetPortfolioHistoryRequest(period=periodo, timeframe=timeframe)
-        hist = client.get_portfolio_history(filter_data=req)
+        hist = client.get_portfolio_history(filter=req)
         
         res = []
         for i in range(len(hist.timestamp)):

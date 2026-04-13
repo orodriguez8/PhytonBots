@@ -50,13 +50,17 @@ class AlpacaTradingStream:
 
     def _thread_target(self):
         try:
-            asyncio.set_event_loop(None)
+            asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             loop.run_until_complete(self._run_async_stream())
             loop.close()
         except Exception as e:
-            logger.error(f"Error en el ciclo asíncrono del TradingStream: {e}")
+            try:
+                loop = asyncio.new_event_loop()
+                loop.run_until_complete(self._run_async_stream())
+            except Exception as e2:
+                logger.error(f"Fallo crítico en TradingStream: {e2}")
 
     def start(self):
         """Lanza el stream en un hilo separado."""
