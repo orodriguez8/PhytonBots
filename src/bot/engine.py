@@ -25,13 +25,24 @@ IS_ALPACA = PROVIDER == 'ALPACA'
 LIVE_ENABLED = bool(ALPACA_API_KEY and ALPACA_SECRET_KEY) if IS_ALPACA else bool(CCXT_API_KEY)
 
 # ── Dynamic State (Shared via references or simple instance) ─────────────────
+import multiprocessing
+
+# ── Dynamic State (Shared via multiprocessing to ensure consistency) ─────────
 class TradingState:
-    AUTO_TRADING_ACTIVE = False
-    BOT_HISTORY = []
-    LAST_RUN_LOG = {}
-    CONSOLE_EVENTS = []
-    MAX_CONSOLE = 60
-    LOCK = threading.Lock() # Lock para evitar race conditions
+    def __init__(self):
+        self._active = multiprocessing.Value('b', False)
+        self.BOT_HISTORY = []
+        self.CONSOLE_EVENTS = []
+        self.MAX_CONSOLE = 60
+        self.LOCK = threading.Lock()
+
+    @property
+    def AUTO_TRADING_ACTIVE(self):
+        return bool(self._active.value)
+
+    @AUTO_TRADING_ACTIVE.setter
+    def AUTO_TRADING_ACTIVE(self, value):
+        self._active.value = bool(value)
 
 state = TradingState()
 
@@ -277,18 +288,21 @@ def trading_loop(socketio=None):
             p_stream = alpaca_data_stream.AlpacaDataStream(WATCHLIST)
             p_stream.start()
         except Exception as e:
-            logger.error(f"Error iniciando DataStream: {e}")
+            logger.info("⚡ Motor de trading iniciado y esperando señales...")
 
-    # Pequeña espera para asegurar estabilidad de red tras el arranque de eventlet/procesos
-    time.sleep(5)
-
-    logger.info("⚡ Motor de trading iniciado y esperando señales...")
     while True:
-        # Procesar eventos acumulados del proceso del stream
-        if stream_mgr:
-            stream_mgr.process_incoming_events()
+        try:
+            # Procesar eventos acumulados del proceso del stream
+            if stream_mgr:
+                stream_mgr.process_incoming_events()
             
-        if state.AUTO_TRADING_ACTIVE:
+            if not state.AUTO_TRADING_ACTIVE:
+                # Latido para confirmar que el hilo no está colgado
+                if time.time() % 60 < 1: # Log cada ~60s para no inundar
+                     logger.debug("⏳ Motor en standby, esperando activación...")
+                time.sleep(1)
+                continue
+
             logger.info("🔍 Ejecutando ciclo de análisis activo...")
             real_equity = CAPITAL_INICIAL
             buying_power = real_equity
@@ -304,18 +318,18 @@ def trading_loop(socketio=None):
                 except Exception as e:
                     logger.warning(f"⚠️ Error recuperando info de cuenta (usando fallback): {e}")
 
-            # Limpiar órdenes atascadas antes de procesar las señales
-            try:
-                limpiar_ordenes_atascadas(socketio)
-            except:
-                pass
+                # Limpiar órdenes atascadas antes de procesar las señales
+                try:
+                    limpiar_ordenes_atascadas(socketio)
+                except:
+                    pass
 
-            # Check Circuit Breaker
-            if not IS_ALPACA and get_circuit_breaker_status():
-                logger.warning("📉 CIRCUIT BREAKER activo. Saltando ciclo para evitar spam.")
-                push_event('warn', "Circuit Breaker Active: Skipping cycle to prevent spam", socketio)
-                time.sleep(60)
-                continue
+                # Check Circuit Breaker
+                if not IS_ALPACA and get_circuit_breaker_status():
+                    logger.warning("📉 CIRCUIT BREAKER activo. Saltando ciclo para evitar spam.")
+                    push_event('warn', "Circuit Breaker Active: Skipping cycle to prevent spam", socketio)
+                    time.sleep(60)
+                    continue
 
             # --- Market Hours Check (Only for Alpaca Stocks) ---
             market_is_open = True
@@ -331,11 +345,9 @@ def trading_loop(socketio=None):
 
                     # Check market hours for stocks
                     if not is_crypto and not market_is_open:
-                        # logger.debug(f"ℹ️ {symbol}: Mercado cerrado, saltando análisis de acciones.")
                         continue
                     
                     if is_crypto and not CRYPTO_TRADING_ENABLED:
-                        # logger.debug(f"ℹ️ {symbol}: Trading crypto desactivado.")
                         continue
                     
                     try:
@@ -473,10 +485,12 @@ def trading_loop(socketio=None):
                     if len(state.BOT_HISTORY) > 100:
                         state.BOT_HISTORY.pop()
 
-                except Exception as e:
-                    logger.error(f"Error {symbol}: {e}")
-                    push_event('error', f"Error processing {symbol}: {e}", socketio)
+                except Exception as e_sym:
+                    logger.error(f"Error procesando {symbol}: {e_sym}")
 
+            # Wait between full cycles
             time.sleep(30)
-        else:
-            time.sleep(1) # Check toggle state more frequently
+
+        except Exception as e_loop:
+            logger.error(f"❌ Error fatal en el bucle principal: {e_loop}")
+            time.sleep(5)
