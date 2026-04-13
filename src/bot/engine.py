@@ -56,10 +56,19 @@ def _get_closed_cached():
     """Devuelve historial usando caché TTL para no sobrecargar la API de Alpaca."""
     global _closed_cache, _closed_cache_ts
     now = time.time()
-    if now - _closed_cache_ts > CLOSED_CACHE_TTL:
-        _closed_cache = get_closed_positions()
-        _closed_cache_ts = now
+    
+    # Si la caché está vacía o ha expirado, intentar actualizarla
+    if not _closed_cache['closed'] or (now - _closed_cache_ts > CLOSED_CACHE_TTL):
+        try:
+            newData = get_closed_positions()
+            if newData and (newData.get('closed') or newData.get('opened')):
+                _closed_cache = newData
+                _closed_cache_ts = now
+        except Exception as e:
+            logger.debug(f"Error actualizando caché de historial: {e}")
+            
     return _closed_cache
+
 
 def push_event(etype, msg, socketio=None):
     """Push an event to the console log and broadcast via WebSocket."""
