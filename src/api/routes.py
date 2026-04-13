@@ -4,6 +4,7 @@ import datetime
 import traceback
 from flask import render_template, jsonify, request
 from src.api.server import app, socketio
+from src.core.logger import logger
 from src.bot.engine import (
     state, push_event, build_summary, cancel_all_orders, 
     LIVE_ENABLED, IS_ALPACA, CCXT_EXCHANGE_ID
@@ -45,15 +46,19 @@ def summary():
 @app.route('/api/toggle-auto', methods=['POST'])
 @app.route('/api/toggle', methods=['POST'])
 def toggle():
+    logger.info("📩 Recibida petición toggle de bot")
     # Verificar contraseña si está configurada
     if BOT_PASSWORD:
         req_data = request.get_json(silent=True) or {}
         user_pwd = req_data.get('password', '')
         if user_pwd != BOT_PASSWORD:
+            logger.warning("🚫 PIN Inválido en toggle")
             return jsonify({'ok': False, 'error': 'Invalid PIN'}), 401
     
     state.AUTO_TRADING_ACTIVE = not state.AUTO_TRADING_ACTIVE
-    push_event('info', f"Bot toggled → {'ACTIVE' if state.AUTO_TRADING_ACTIVE else 'STANDBY'}", socketio)
+    msg = f"Bot toggled → {'ACTIVE' if state.AUTO_TRADING_ACTIVE else 'STANDBY'}"
+    logger.info(f"✅ {msg}")
+    push_event('info', msg, socketio)
     return jsonify({'ok': True, 'state': state.AUTO_TRADING_ACTIVE, 'auto_trading': state.AUTO_TRADING_ACTIVE})
 
 @app.route('/api/cancel_all', methods=['POST'])

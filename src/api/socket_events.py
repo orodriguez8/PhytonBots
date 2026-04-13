@@ -8,9 +8,6 @@ from src.bot.engine import state, push_event, build_summary
 def handle_connect():
     logger.info(f"🔌 WebSocket client connected")
     push_event('info', 'Client connected', socketio)
-    # Send initial state immediately
-    data = build_summary()
-    socketio.emit('data_update', data)
 
 @socketio.on('disconnect')
 def handle_disconnect():
