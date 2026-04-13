@@ -282,25 +282,33 @@ def trading_loop(socketio=None):
     # Pequeña espera para asegurar estabilidad de red tras el arranque de eventlet/procesos
     time.sleep(5)
 
+    logger.info("⚡ Motor de trading iniciado y esperando señales...")
     while True:
         # Procesar eventos acumulados del proceso del stream
         if stream_mgr:
             stream_mgr.process_incoming_events()
             
         if state.AUTO_TRADING_ACTIVE:
+            logger.info("🔍 Ejecutando ciclo de análisis activo...")
             real_equity = CAPITAL_INICIAL
             buying_power = real_equity
             positions_list = []
 
             if LIVE_ENABLED:
-                acc = get_account()
-                if acc:
-                    real_equity = float(acc.get('nav', real_equity))
-                    buying_power = float(acc.get('margen_libre', real_equity))
-                positions_list = get_positions()
+                try:
+                    acc = get_account()
+                    if acc:
+                        real_equity = float(acc.get('nav', real_equity))
+                        buying_power = float(acc.get('margen_libre', real_equity))
+                    positions_list = get_positions()
+                except Exception as e:
+                    logger.warning(f"⚠️ Error recuperando info de cuenta (usando fallback): {e}")
 
             # Limpiar órdenes atascadas antes de procesar las señales
-            limpiar_ordenes_atascadas(socketio)
+            try:
+                limpiar_ordenes_atascadas(socketio)
+            except:
+                pass
 
             # Check Circuit Breaker
             if not IS_ALPACA and get_circuit_breaker_status():
@@ -330,7 +338,12 @@ def trading_loop(socketio=None):
                         # logger.debug(f"ℹ️ {symbol}: Trading crypto desactivado.")
                         continue
                     
-                    datos = get_data(symbol)
+                    try:
+                        datos = get_data(symbol)
+                    except Exception as e:
+                        logger.error(f"❌ Error obteniendo datos para {symbol}: {e}")
+                        continue
+
                     if datos is None or datos.empty:
                         logger.warning(f"⚠️ {symbol}: Sin datos, saltando.")
                         push_event('warn', f"{symbol}: No data, skipping", socketio)
