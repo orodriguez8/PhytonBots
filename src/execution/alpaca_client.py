@@ -5,11 +5,11 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import GetOrdersRequest, MarketOrderRequest, LimitOrderRequest, TakeProfitRequest, StopLossRequest
 from alpaca.trading.enums import OrderSide, TimeInForce, OrderClass, AssetClass, TradeActivityType
 from alpaca.trading.requests import GetOrderByIdRequest, ClosePositionRequest, GetPortfolioHistoryRequest
-# Import variable para evitar errores de versión en las actividades
+# Import dinámico para evitar fallos de versión
 ActivitiesRequestClass = None
 import alpaca.trading.requests as alp_req
 for item in dir(alp_req):
-    if "Activity" in item and "Request" in item:
+    if "Activity" in item:
         ActivitiesRequestClass = getattr(alp_req, item)
         break
 
@@ -85,18 +85,20 @@ def obtener_posiciones_cerradas():
         # Obtenemos actividades de tipo FILL (ejecuciones)
         activities = []
         try:
+            # Intentar varios nombres de campo para el filtro según la versión de alpaca-py
             if ActivitiesRequestClass:
                 req = ActivitiesRequestClass(activity_types=[TradeActivityType.FILL])
-                activities = client.get_account_activities(filter=req)
+                try:
+                    activities = client.get_account_activities(filter=req)
+                except:
+                    activities = client.get_account_activities(req)
             else:
-                # Fallback: intentar sin filtro o con parámetros directos
-                activities = client.get_account_activities({"activity_types": "FILL"})
-        except:
+                activities = client.get_account_activities({"activity_types": ["FILL"]})
+        except Exception as e:
             try:
-                # Segundo fallback: nombres de método alternativos
                 activities = client.get_activities(activity_types="FILL")
             except:
-                logger.error("No se pudo recuperar el historial de actividades con ninguna firma conocida.")
+                logger.error(f"Error definitivo en actividades: {e}")
                 activities = []
         
         raw_fills = []

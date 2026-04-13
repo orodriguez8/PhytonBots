@@ -48,7 +48,13 @@ class AlpacaDataStream:
 
     def _thread_target(self, coro):
         try:
-            asyncio.run(coro)
+            # Forzar la creación de un nuevo loop en este hilo
+            # ignorando cualquier configuración previa (ej. eventlet)
+            asyncio.set_event_loop(None)
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(coro)
+            loop.close()
         except Exception as e:
             logger.error(f"Error en el ciclo asíncrono del stream: {e}")
 
