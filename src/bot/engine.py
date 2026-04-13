@@ -268,6 +268,9 @@ def trading_loop(socketio=None):
         except Exception as e:
             logger.error(f"Error iniciando DataStream: {e}")
 
+    # Pequeña espera para asegurar estabilidad de red tras el arranque de eventlet/procesos
+    time.sleep(5)
+
     while True:
         # Procesar eventos acumulados del proceso del stream
         if stream_mgr:

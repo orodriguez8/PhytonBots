@@ -16,8 +16,13 @@ for item in dir(alp_req):
 from src.core.config import ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_PAPER, ALPACA_BASE_URL
 from src.core.logger import logger
 
+_TRADING_CLIENT = None
+
 def _get_trading_client():
-    return TradingClient(ALPACA_API_KEY, ALPACA_SECRET_KEY, paper=ALPACA_PAPER)
+    global _TRADING_CLIENT
+    if _TRADING_CLIENT is None:
+        _TRADING_CLIENT = TradingClient(ALPACA_API_KEY, ALPACA_SECRET_KEY, paper=ALPACA_PAPER)
+    return _TRADING_CLIENT
 
 @backoff.on_exception(backoff.expo, Exception, max_tries=5, giveup=lambda e: not any(x in str(e) for x in ["429", "SSL", "connection", "ConnectionPool", "Timeout"]))
 def obtener_cuenta():
@@ -272,7 +277,7 @@ def obtener_historial_cartera(periodo='1M', timeframe='1D'):
     try:
         client = _get_trading_client()
         req = GetPortfolioHistoryRequest(period=periodo, timeframe=timeframe)
-        hist = client.get_portfolio_history(filter=req)
+        hist = client.get_portfolio_history(filter_data=req)
         
         res = []
         for i in range(len(hist.timestamp)):
