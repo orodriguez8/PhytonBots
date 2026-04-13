@@ -4,7 +4,7 @@ import backoff
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import GetOrdersRequest, MarketOrderRequest, LimitOrderRequest, TakeProfitRequest, StopLossRequest
 from alpaca.trading.enums import OrderSide, TimeInForce, OrderClass, AssetClass, TradeActivityType
-from alpaca.trading.requests import GetOrderByIdRequest, ClosePositionRequest, GetPortfolioHistoryRequest
+from alpaca.trading.requests import GetOrderByIdRequest, ClosePositionRequest, GetPortfolioHistoryRequest, GetAccountActivitiesRequest
 
 from src.core.config import ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_PAPER, ALPACA_BASE_URL
 from src.core.logger import logger
@@ -31,7 +31,7 @@ def obtener_cuenta():
             'balance': float(account.cash),
             'nav': equity,
             'pl': pl_total,
-            'pl_abierto': float(account.unrealized_intraday_pl or 0),
+            'pl_abierto': float(getattr(account, 'unrealized_pl', 0) or 0),
             'margen_libre': float(account.buying_power),
             'posiciones': 0, 
             'apalancamiento': account.multiplier,
@@ -76,7 +76,8 @@ def obtener_posiciones_cerradas():
         client = _get_trading_client()
         
         # Obtenemos actividades de tipo FILL (ejecuciones)
-        activities = client.get_portfolio_activities(activity_types=[TradeActivityType.FILL])
+        req = GetAccountActivitiesRequest(activity_types=[TradeActivityType.FILL])
+        activities = client.get_account_activities(filter=req)
         
         raw_fills = []
         for f in activities:

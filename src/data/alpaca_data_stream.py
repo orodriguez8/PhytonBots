@@ -2,7 +2,7 @@
 import threading
 import asyncio
 from alpaca.data.live import StockDataStream, CryptoDataStream
-from src.core.config import ALPACA_API_KEY, ALPACA_SECRET_KEY, WATCHLIST
+from src.core.config import ALPACA_API_KEY, ALPACA_SECRET_KEY
 from src.core.logger import logger
 
 # Global cache for the latest prices
@@ -15,59 +15,51 @@ class AlpacaDataStream:
         self.stock_symbols = [s for s in symbols if not any(q in s.upper() for q in ['USD', 'USDT', 'USDC', '/'])]
         self.crypto_symbols = [s for s in symbols if s not in self.stock_symbols]
         
-        self.stock_stream = None
-        self.crypto_stream = None
-        
-        self._threads = []
-
-    async def _handle_bar(self, data):
-        """Handler para recibir velas en tiempo real (si quisiéramos usarlas)."""
-        pass
-
     async def _handle_trade(self, data):
         """Handler para recibir el último precio ejecutado."""
-        with PRICE_LOCK:
-            LATEST_PRICES[data.symbol] = float(data.price)
-
-    def _run_stock_stream(self):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        self.stock_stream = StockDataStream(ALPACA_API_KEY, ALPACA_SECRET_KEY)
-        # Suscribirse a trades para tener precio actual al segundo
-        self.stock_stream.subscribe_trades(self._handle_trade, *self.stock_symbols)
-        
-        logger.info(f"📡 WebSocket Acciones: Suscrito a {len(self.stock_symbols)} símbolos.")
         try:
-            self.stock_stream.run()
+            with PRICE_LOCK:
+                # Clean symbol name (e.g. BTC/USD -> BTCUSD for internal consistency)
+                sym = data.symbol.replace('/', '')
+                LATEST_PRICES[sym] = float(data.price)
+        except Exception as e:
+            logger.error(f"Error en _handle_trade: {e}")
+
+    async def _run_stock_stream(self):
+        if not self.stock_symbols: return
+        logger.info(f"📡 Iniciando WebSocket Acciones para {len(self.stock_symbols)} símbolos...")
+        try:
+            stream = StockDataStream(ALPACA_API_KEY, ALPACA_SECRET_KEY)
+            stream.subscribe_trades(self._handle_trade, *self.stock_symbols)
+            await stream._run_forever()
         except Exception as e:
             logger.error(f"❌ Error en WebSocket Acciones: {e}")
 
-    def _run_crypto_stream(self):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        self.crypto_stream = CryptoDataStream(ALPACA_API_KEY, ALPACA_SECRET_KEY)
-        norm_crypto = [s if '/' in s else s.replace('USD', '/USD') for s in self.crypto_symbols]
-        self.crypto_stream.subscribe_trades(self._handle_trade, *norm_crypto)
-        
-        logger.info(f"📡 WebSocket Cripto: Suscrito a {len(self.crypto_symbols)} símbolos.")
+    async def _run_crypto_stream(self):
+        if not self.crypto_symbols: return
+        logger.info(f"📡 Iniciando WebSocket Cripto para {len(self.crypto_symbols)} símbolos...")
         try:
-            self.crypto_stream.run()
+            stream = CryptoDataStream(ALPACA_API_KEY, ALPACA_SECRET_KEY)
+            norm_crypto = [s if '/' in s else s.replace('USD', '/USD') for s in self.crypto_symbols]
+            stream.subscribe_trades(self._handle_trade, *norm_crypto)
+            await stream._run_forever()
         except Exception as e:
             logger.error(f"❌ Error en WebSocket Cripto: {e}")
+
+    def _thread_target(self, coro):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(coro)
 
     def start(self):
         """Lanza los hilos para acciones y cripto."""
         if self.stock_symbols:
-            t1 = threading.Thread(target=self._run_stock_stream, daemon=True)
+            t1 = threading.Thread(target=self._thread_target, args=(self._run_stock_stream(),), daemon=True)
             t1.start()
-            self._threads.append(t1)
         
         if self.crypto_symbols:
-            t2 = threading.Thread(target=self._run_crypto_stream, daemon=True)
+            t2 = threading.Thread(target=self._thread_target, args=(self._run_crypto_stream(),), daemon=True)
             t2.start()
-            self._threads.append(t2)
 
 def get_latest_price(symbol):
     """Devuelve el último precio conocido del cache global."""
