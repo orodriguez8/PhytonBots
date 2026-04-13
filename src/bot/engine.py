@@ -476,20 +476,10 @@ def trading_loop(socketio=None):
                                     logger.error(f"Order failed for {symbol}: {e_o}")
                                     push_event('error', f"Order failed {symbol}: {e_o}", socketio)
 
-                    # 4. History Update (Scans)
-                    if dir_ not in ['NEUTRAL', 'NO_TRADE']:
-                        state.BOT_HISTORY.insert(0, {
-                            'time': datetime.datetime.now().isoformat(),
-                            'sym': symbol, 'type': f"{dir_}", 'price': price, 'reason': reason
-                        })
-
-                    if len(state.BOT_HISTORY) > 100:
-                        state.BOT_HISTORY.pop()
-
                 except Exception as e_sym:
                     logger.error(f"Error procesando {symbol}: {e_sym}")
 
-            # Wait between full cycles
+            # Espera entre ciclos completos para no saturar
             time.sleep(30)
 
         except Exception as e_loop:
