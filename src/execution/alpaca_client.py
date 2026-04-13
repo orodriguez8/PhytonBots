@@ -19,7 +19,7 @@ from src.core.logger import logger
 def _get_trading_client():
     return TradingClient(ALPACA_API_KEY, ALPACA_SECRET_KEY, paper=ALPACA_PAPER)
 
-@backoff.on_exception(backoff.expo, Exception, max_tries=3, giveup=lambda e: "429" not in str(e))
+@backoff.on_exception(backoff.expo, Exception, max_tries=5, giveup=lambda e: not any(x in str(e) for x in ["429", "SSL", "connection", "ConnectionPool", "Timeout"]))
 def obtener_cuenta():
     """
     Devuelve resumen de la cuenta Alpaca usando alpaca-py.

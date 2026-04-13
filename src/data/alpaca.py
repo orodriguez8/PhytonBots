@@ -12,7 +12,7 @@ from src.core.config import ALPACA_API_KEY, ALPACA_SECRET_KEY
 
 logger = logging.getLogger(__name__)
 
-@backoff.on_exception(backoff.expo, Exception, max_tries=3, giveup=lambda e: "429" not in str(e))
+@backoff.on_exception(backoff.expo, Exception, max_tries=5, giveup=lambda e: not any(x in str(e) for x in ["429", "SSL", "connection", "ConnectionPool", "Timeout"]))
 def obtener_datos_alpaca(symbol: str = 'BTC/USD', limit: int = 300, timeframe: str = '1Hour'):
     """
     Fetch bar data from Alpaca using alpaca-py SDK.
