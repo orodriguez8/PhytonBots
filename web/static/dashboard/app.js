@@ -8,7 +8,7 @@ const API_STATUS = '/api/status';
 const API_ACCOUNT = '/api/account';
 const API_ORDER = '/api/order';
 const API_CLOSE = '/api/close';
-
+ 
 let charts = {};
 let currentMode = 'SIMULADOR';
 let currentDecision = null;

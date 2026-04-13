@@ -1,15 +1,15 @@
-
 import time
 import datetime
 from datetime import timezone
 import traceback
+import threading
 from src.core.logger import logger
 from src.utils.helpers import safe_float
 from src.bot.trading_bot import TradingBot
 from src.bot.analyzer_crypto import CryptoAnalyzer
 from src.core.config import (
     CAPITAL_INICIAL, RIESGO_POR_OPERACION, RIESGO_CRYPTO, MIN_CONFLUENCIAS, WATCHLIST,
-    TRADING_MODE_CRYPTO, ALPACA_API_KEY, ALPACA_SECRET_KEY,
+    TRADING_MODE_CRYPTO, ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_PAPER,
     CCXT_API_KEY, CCXT_EXCHANGE_ID, BOT_PASSWORD, CRYPTO_TRADING_ENABLED
 )
 from src.core.health import get_circuit_breaker_status
@@ -17,8 +17,8 @@ from src.risk.management import calcular_gestion_riesgo
 
 
 # Providers and wrappers
-from src.execution import alpaca_client, ccxt_client
-from src.data import alpaca, ccxt
+from src.execution import alpaca_client, ccxt_client, alpaca_stream
+from src.data import alpaca, ccxt, alpaca_data_stream
 
 PROVIDER = (TRADING_MODE_CRYPTO or 'ALPACA').upper()
 IS_ALPACA = PROVIDER == 'ALPACA'
@@ -31,6 +31,7 @@ class TradingState:
     LAST_RUN_LOG = {}
     CONSOLE_EVENTS = []
     MAX_CONSOLE = 60
+    LOCK = threading.Lock() # Lock para evitar race conditions
 
 state = TradingState()
 
@@ -55,9 +56,10 @@ def push_event(etype, msg, socketio=None):
         'msg': msg,
         'time': datetime.datetime.now().strftime('%H:%M:%S'),
     }
-    state.CONSOLE_EVENTS.insert(0, evt)
-    if len(state.CONSOLE_EVENTS) > state.MAX_CONSOLE:
-        state.CONSOLE_EVENTS.pop()
+    with state.LOCK:
+        state.CONSOLE_EVENTS.insert(0, evt)
+        if len(state.CONSOLE_EVENTS) > state.MAX_CONSOLE:
+            state.CONSOLE_EVENTS.pop()
     
     if socketio:
         try:
@@ -98,16 +100,8 @@ def cancel_all_orders():
 def cancel_orders_for_symbol(symbol):
     """Cancela órdenes específicamente para un símbolo antes de cerrar posición."""
     if not IS_ALPACA or not LIVE_ENABLED: return
-    try:
-        api = alpaca_client._get_api()
-        norm_sym = symbol.replace('/', '').upper()
-        orders = api.list_orders(status='open', symbols=[norm_sym])
-        for o in orders:
-            api.cancel_order(o.id)
-            logger.info(f"Canceled pending order {o.id} for {symbol} before closing.")
-        time.sleep(0.5) # Give Alpaca a moment to process the cancellations
-    except Exception as e:
-        logger.error(f"Error canceling orders for {symbol}: {e}")
+    alpaca_client.cancelar_ordenes_por_simbolo(symbol)
+    time.sleep(0.5)
 
 
 def limpiar_ordenes_atascadas(socketio=None):
@@ -256,6 +250,23 @@ def build_summary():
 
 def trading_loop(socketio=None):
     """Main trading loop (runs in background thread)"""
+    
+    # Iniciar stream de eventos (Trade Updates)
+    if IS_ALPACA and LIVE_ENABLED:
+        try:
+            stream_mgr = alpaca_stream.AlpacaTradingStream(state, lambda t, m: push_event(t, m, socketio))
+            stream_mgr.start()
+        except Exception as e:
+            logger.error(f"Error iniciando TradingStream: {e}")
+
+    # Iniciar stream de datos (Precios en tiempo real)
+    if IS_ALPACA and LIVE_ENABLED:
+        try:
+            p_stream = alpaca_data_stream.AlpacaDataStream(WATCHLIST)
+            p_stream.start()
+        except Exception as e:
+            logger.error(f"Error iniciando DataStream: {e}")
+
     while True:
         if state.AUTO_TRADING_ACTIVE:
             real_equity = CAPITAL_INICIAL
@@ -279,12 +290,22 @@ def trading_loop(socketio=None):
                 time.sleep(60)
                 continue
 
-            logger.info(f"--- 🌀 CICLO: Equity ${real_equity} | BP ${buying_power} | Posiciones: {len(positions_list)} ---")
+            # --- Market Hours Check (Only for Alpaca Stocks) ---
+            market_is_open = True
+            if IS_ALPACA:
+                market_is_open = alpaca_client.es_mercado_abierto()
+
+            logger.info(f"--- 🌀 CICLO: Equity ${real_equity} | BP ${buying_power} | Posiciones: {len(positions_list)} | Mercado: {'Abierto' if market_is_open else 'Cerrado'} ---")
             push_event('info', f"Cycle: Equity ${real_equity:,.2f} | BP ${buying_power:,.2f} | {len(positions_list)} pos", socketio)
 
             for symbol in WATCHLIST:
                 try:
                     is_crypto = any(q in symbol.upper() for q in ['USD', 'USDT', 'USDC', '/'])
+
+                    # Check market hours for stocks
+                    if not is_crypto and not market_is_open:
+                        # logger.debug(f"ℹ️ {symbol}: Mercado cerrado, saltando análisis de acciones.")
+                        continue
                     
                     if is_crypto and not CRYPTO_TRADING_ENABLED:
                         # logger.debug(f"ℹ️ {symbol}: Trading crypto desactivado.")
@@ -309,7 +330,9 @@ def trading_loop(socketio=None):
                         'dir': dir_,
                         'reason': reason,
                     }
-                    price = float(datos['close'].iloc[-1])
+                    # Intentar usar el precio de WebSocket (si está disponible) para mayor precisión
+                    ws_price = alpaca_data_stream.get_latest_price(symbol)
+                    price = ws_price if ws_price else float(datos['close'].iloc[-1])
 
 
                     norm_sym = symbol.replace('/', '').upper()
@@ -384,10 +407,13 @@ def trading_loop(socketio=None):
                             sl = ges.get('stop_loss')
                             tp = ges.get('take_profit')
 
-                            # Limit to 10% equity per trade
-                            max_val = buying_power * 0.10
-                            if (raw_qty * price) > max_val:
-                                raw_qty = max_val / price
+                            # --- PDT & Safety Check ---
+                            if not is_crypto and real_equity < 25000:
+                                pdt_count = acc.get('pdt_reset', 0) if acc else 0
+                                if pdt_count >= 3:
+                                    logger.warning(f"⚠️ {symbol}: BLOQUEO PDT. {pdt_count} day trades detectados con cuenta < $25k. Operación cancelada.")
+                                    push_event('warn', f"PDT Limit Warning: {symbol} entry blocked", socketio)
+                                    continue
 
                             qty = int(raw_qty) if (IS_ALPACA and dir_ == 'SHORT') else round(raw_qty, 4)
 
