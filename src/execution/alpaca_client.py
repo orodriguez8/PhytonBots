@@ -7,13 +7,11 @@ from alpaca.trading.enums import OrderSide, TimeInForce, OrderClass, AssetClass,
 from alpaca.trading.requests import GetOrderByIdRequest, ClosePositionRequest, GetPortfolioHistoryRequest
 # Import variable para evitar errores de versión en las actividades
 ActivitiesRequestClass = None
-try:
-    from alpaca.trading.requests import GetAccountActivitiesRequest as ActivitiesRequestClass
-except ImportError:
-    try:
-        from alpaca.trading.requests import GetActivitiesRequest as ActivitiesRequestClass
-    except ImportError:
-        ActivitiesRequestClass = None
+import alpaca.trading.requests as alp_req
+for item in dir(alp_req):
+    if "Activity" in item and "Request" in item:
+        ActivitiesRequestClass = getattr(alp_req, item)
+        break
 
 from src.core.config import ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_PAPER, ALPACA_BASE_URL
 from src.core.logger import logger

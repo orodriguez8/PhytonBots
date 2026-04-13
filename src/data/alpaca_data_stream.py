@@ -47,9 +47,10 @@ class AlpacaDataStream:
             logger.error(f"❌ Error en WebSocket Cripto: {e}")
 
     def _thread_target(self, coro):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(coro)
+        try:
+            asyncio.run(coro)
+        except Exception as e:
+            logger.error(f"Error en el ciclo asíncrono del stream: {e}")
 
     def start(self):
         """Lanza los hilos para acciones y cripto."""
