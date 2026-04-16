@@ -144,6 +144,7 @@ def obtener_posiciones_cerradas():
                     qty        = float(f.get('qty', 0) or 0)
                     price      = float(f.get('price', 0) or 0)
                     t_raw      = f.get('transaction_time') or f.get('created_at', '')
+                    order_id   = f.get('order_id', '')       # clave para agrupar fills del mismo pedido
                 else:
                     # Objeto modelo (raro, pero por compatibilidad)
                     s          = getattr(f, 'symbol', '')
@@ -152,6 +153,7 @@ def obtener_posiciones_cerradas():
                     qty        = float(getattr(f, 'qty', 0) or 0)
                     price      = float(getattr(f, 'price', 0) or 0)
                     t_raw      = getattr(f, 'transaction_time', None) or getattr(f, 'filled_at', None)
+                    order_id   = str(getattr(f, 'order_id', '') or '')
 
                 if not s or qty <= 0 or price <= 0:
                     continue
@@ -164,10 +166,48 @@ def obtener_posiciones_cerradas():
                 else:
                     t_parsed = datetime.now(timezone.utc)
 
-                raw_fills.append({'s': s, 'side': side_val, 'q': qty, 'p': price, 't': t_parsed})
+                raw_fills.append({
+                    's': s, 'side': side_val, 'q': qty, 'p': price,
+                    't': t_parsed, 'order_id': order_id
+                })
             except (AttributeError, TypeError, ValueError) as e:
                 logger.debug(f"[FILLS] Error procesando entrada: {e}")
                 continue
+
+        # ── Agrupar fills parciales del mismo order_id (precio promedio ponderado) ──
+        # Alpaca puede dividir 1 orden en N fills parciales → los consolidamos en 1 fila
+        aggregated = {}
+        for f in raw_fills:
+            oid = f['order_id']
+            # Si no hay order_id usamos símbolo+side+minuto como clave aproximada
+            if not oid:
+                oid = f"{f['s']}_{f['side']}_{f['t'].strftime('%Y%m%d%H%M')}"
+            
+            if oid not in aggregated:
+                aggregated[oid] = {
+                    's': f['s'], 'side': f['side'],
+                    'total_qty': 0.0, 'total_cost': 0.0,
+                    't': f['t']
+                }
+            else:
+                # Conservar el timestamp más tardío (cuando se completó la orden)
+                if f['t'] > aggregated[oid]['t']:
+                    aggregated[oid]['t'] = f['t']
+            
+            aggregated[oid]['total_qty']  += f['q']
+            aggregated[oid]['total_cost'] += f['q'] * f['p']
+
+        # Reconstruir raw_fills con precio promedio ponderado
+        raw_fills = []
+        for oid, ag in aggregated.items():
+            if ag['total_qty'] > 0:
+                avg_price = ag['total_cost'] / ag['total_qty']
+                raw_fills.append({
+                    's': ag['s'], 'side': ag['side'],
+                    'q': round(ag['total_qty'], 6),
+                    'p': round(avg_price, 4),
+                    't': ag['t']
+                })
 
         # ── Ordenar cronológicamente (FIFO) ───────────────────────────────────
         raw_fills.sort(key=lambda x: x['t'])
