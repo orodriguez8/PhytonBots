@@ -13,6 +13,6 @@ alpaca-py
 backoff
 requests
 websocket-client
-urllib3<2.0.0
+urllib3
 ccxt
 pandas-ta-classic==0.4.47

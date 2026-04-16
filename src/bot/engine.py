@@ -155,8 +155,9 @@ def limpiar_ordenes_atascadas(socketio=None):
                 logger.info(f"🕒 LIMPIEZA: Cancelando orden atascada de {o['symbol']} ({segundos_abierta:.0f}s abierta)")
                 push_event('warn', f"Stale order cleaned: {o['symbol']} ({segundos_abierta:.0f}s)", socketio)
                 
-                api = alpaca_client._get_api()
-                api.cancel_order(o['id'])
+                # Usamos el cliente unificado
+                client = alpaca_client._get_trading_client()
+                client.cancel_order_by_id(o['id'])
     except Exception as e:
         logger.debug(f"Error en limpieza de órdenes: {e}")
 
