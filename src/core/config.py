@@ -22,8 +22,13 @@ CAPITAL_INICIAL = 10_000.0       # Capital inicial en USD
 RIESGO_POR_OPERACION = 0.015      # Máximo 1.5% del capital por operación (Conservative)
 
 # --- Modo de Trading ---
-# 'ALPACA' para Acciones, 'COINBASE' para Cripto (via CCXT)
-TRADING_MODE_CRYPTO = os.getenv('TRADING_MODE_CRYPTO', 'ALPACA').strip().upper()
+# 'ALPACA' para Acciones (Alpaca)
+# 'OANDA' para Forex/CFDs (Oanda)
+# 'CRYPTO' para Cripto (via CCXT/Coinbase)
+TRADING_PROVIDER = os.getenv('TRADING_PROVIDER', 'ALPACA').strip().upper()
+
+# Legacy fallback support
+TRADING_MODE_CRYPTO = TRADING_PROVIDER # Para no romper compatibilidad donde se use esta variable
 USE_TESTNET = True               # Cambiar a False para cuenta real
 
 # --- Conexión Alpaca ---
@@ -39,6 +44,13 @@ if not _base_env:
 else:
     # Eliminar '/v2' o '/' al final para evitar errores de duplicación
     ALPACA_BASE_URL = _base_env.rstrip('/').replace('/v2', '')
+
+# --- Conexión Oanda ---
+OANDA_API_KEY = os.getenv('OANDA_API_KEY', '')
+OANDA_ACCOUNT_ID = os.getenv('OANDA_ACCOUNT_ID', '')
+OANDA_ENVIRONMENT = os.getenv('OANDA_ENVIRONMENT', 'practice') # 'practice' o 'live'
+OANDA_INSTRUMENT = os.getenv('OANDA_INSTRUMENT', 'EUR_USD')
+OANDA_GRANULARITY = os.getenv('OANDA_GRANULARITY', 'M1')
 
 # --- Multiplicadores ATR para Stop Loss y Take Profit ---
 # Estrategia Asimétrica para ACCIONES (Trend Following)

@@ -78,20 +78,34 @@ def obtener_posiciones_abiertas() -> list:
         short_side = p.get('short', {})
 
         if int(long_side.get('units', 0)) != 0:
+            units = int(long_side.get('units', 0))
+            avg_p = float(long_side.get('averagePrice', 0))
+            pl = float(long_side.get('unrealizedPL', 0))
+            val = units * avg_p
+            pct = (pl / val * 100) if val != 0 else 0
             resultado.append({
                 'instrumento': instrumento,
                 'direccion':   'LONG',
-                'unidades':    int(long_side.get('units', 0)),
-                'precio_medio':float(long_side.get('averagePrice', 0)),
-                'pl':          float(long_side.get('unrealizedPL', 0)),
+                'unidades':    units,
+                'precio_medio':avg_p,
+                'pl':          pl,
+                'valor_total': val,
+                'pl_pct':      pct
             })
         if int(short_side.get('units', 0)) != 0:
+            units = abs(int(short_side.get('units', 0)))
+            avg_p = float(short_side.get('averagePrice', 0))
+            pl = float(short_side.get('unrealizedPL', 0))
+            val = units * avg_p
+            pct = (pl / val * 100) if val != 0 else 0
             resultado.append({
                 'instrumento': instrumento,
                 'direccion':   'SHORT',
-                'unidades':    abs(int(short_side.get('units', 0))),
-                'precio_medio':float(short_side.get('averagePrice', 0)),
-                'pl':          float(short_side.get('unrealizedPL', 0)),
+                'unidades':    units,
+                'precio_medio':avg_p,
+                'pl':          pl,
+                'valor_total': val,
+                'pl_pct':      pct
             })
 
     return resultado

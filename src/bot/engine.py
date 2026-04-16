@@ -8,20 +8,28 @@ from src.bot.trading_bot import TradingBot
 from src.bot.analyzer_crypto import CryptoAnalyzer
 from src.core.config import (
     CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS, WATCHLIST,
-    TRADING_MODE_CRYPTO, ALPACA_API_KEY, ALPACA_SECRET_KEY,
-    CCXT_API_KEY, CCXT_EXCHANGE_ID, BOT_PASSWORD
+    TRADING_PROVIDER, ALPACA_API_KEY, ALPACA_SECRET_KEY,
+    CCXT_API_KEY, CCXT_EXCHANGE_ID, BOT_PASSWORD,
+    OANDA_API_KEY, OANDA_ACCOUNT_ID
 )
 from src.core.health import get_circuit_breaker_status
 from src.risk.management import calcular_gestion_riesgo
 
 
 # Providers and wrappers
-from src.execution import alpaca_client, ccxt_client
-from src.data import alpaca, ccxt
+from src.execution import alpaca_client, ccxt_client, oanda_client
+from src.data import alpaca, ccxt, oanda
 
-PROVIDER = (TRADING_MODE_CRYPTO or 'ALPACA').upper()
+PROVIDER = TRADING_PROVIDER.upper()
 IS_ALPACA = PROVIDER == 'ALPACA'
-LIVE_ENABLED = bool(ALPACA_API_KEY and ALPACA_SECRET_KEY) if IS_ALPACA else bool(CCXT_API_KEY)
+IS_OANDA = PROVIDER == 'OANDA'
+
+if IS_ALPACA:
+    LIVE_ENABLED = bool(ALPACA_API_KEY and ALPACA_SECRET_KEY)
+elif IS_OANDA:
+    LIVE_ENABLED = bool(OANDA_API_KEY and OANDA_ACCOUNT_ID)
+else:
+    LIVE_ENABLED = bool(CCXT_API_KEY)
 
 # ── Dynamic State (Shared via references or simple instance) ─────────────────
 class TradingState:
@@ -66,33 +74,50 @@ def push_event(etype, msg, socketio=None):
 
 def get_data(symbol):
     if not LIVE_ENABLED: return None
-    return alpaca.obtener_datos_alpaca(symbol) if IS_ALPACA else ccxt.obtener_datos_ccxt(symbol)
+    if IS_ALPACA: return alpaca.obtener_datos_alpaca(symbol)
+    if IS_OANDA:  return oanda.obtener_datos_oanda(symbol)
+    return ccxt.obtener_datos_ccxt(symbol)
 
 def get_account():
     if not LIVE_ENABLED: return None
-    return alpaca_client.obtener_cuenta() if IS_ALPACA else ccxt_client.obtener_cuenta_ccxt()
+    if IS_ALPACA: return alpaca_client.obtener_cuenta()
+    if IS_OANDA:  return oanda_client.obtener_cuenta()
+    return ccxt_client.obtener_cuenta_ccxt()
 
 def get_positions():
     if not LIVE_ENABLED: return []
-    return alpaca_client.obtener_posiciones_abiertas() if IS_ALPACA else ccxt_client.obtener_posiciones_abiertas_ccxt()
+    if IS_ALPACA: return alpaca_client.obtener_posiciones_abiertas()
+    if IS_OANDA:  return oanda_client.obtener_posiciones_abiertas()
+    return ccxt_client.obtener_posiciones_abiertas_ccxt()
 
 def get_orders():
     if not LIVE_ENABLED: return []
-    return alpaca_client.obtener_ordenes_activas() if IS_ALPACA else []
+    if IS_ALPACA: return alpaca_client.obtener_ordenes_activas()
+    if IS_OANDA:  return [] # Oanda client doesn't have a direct 'get_orders' yet in this file
+    return []
 
 def get_closed_positions():
     if not LIVE_ENABLED: return []
-    return alpaca_client.obtener_posiciones_cerradas() if IS_ALPACA else []
+    if IS_ALPACA: return alpaca_client.obtener_posiciones_cerradas()
+    # Oanda closed positions logic can be added later if needed
+    return []
 
 def place_order(symbol, qty, side, tp=None, sl=None):
     if not LIVE_ENABLED: return None
     if IS_ALPACA:
         return alpaca_client.colocar_orden_mercado(symbol, qty, side, tp, sl)
+    if IS_OANDA:
+        # Note: Oanda client takes (direction, units, instrument, stop_loss, take_profit)
+        # We normalize direction to 'LONG'/'SHORT'
+        direction = 'LONG' if side.lower() == 'buy' else 'SHORT'
+        return oanda_client.colocar_orden_mercado(direction, qty, symbol, sl, tp)
     return ccxt_client.colocar_orden_mercado_ccxt(symbol, qty, side)
 
 def cancel_all_orders():
     if not LIVE_ENABLED: return False
-    return alpaca_client.cancelar_todas_las_ordenes() if IS_ALPACA else ccxt_client.cancelar_todas_las_ordenes_ccxt()
+    if IS_ALPACA: return alpaca_client.cancelar_todas_las_ordenes()
+    # Oanda equivalent would go here
+    return False
 
 def cancel_orders_for_symbol(symbol):
     """Cancela órdenes específicamente para un símbolo antes de cerrar posición."""
@@ -277,6 +302,8 @@ def trading_loop(socketio=None):
                                     if IS_ALPACA:
                                         cancel_orders_for_symbol(symbol)
                                         alpaca_client.cerrar_posicion(symbol)
+                                    elif IS_OANDA:
+                                        oanda_client.cerrar_posicion(symbol)
                                     else:
                                         place_order(symbol, current_pos['unidades'], 'sell' if is_long else 'buy')
                                     

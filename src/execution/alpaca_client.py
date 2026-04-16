@@ -80,13 +80,18 @@ def obtener_posiciones_cerradas():
     try:
         from dateutil import parser
         api = _get_api()
-        # Buscamos 'FILL' y 'PTRADE' (que a veces se usa para cierres)
-        tipos = ['FILL']
+        # Activity types en el SDK suelen preferir un string separado por comas
+        # o un solo string si es un solo tipo. 'FILL' es el estándar para trades.
+        tipos = 'FILL' 
+        
+        # Aumentamos el límite para permitir encontrar el 'BUY' de un 'SELL' antiguo
         activities = api.get_activities(activity_types=tipos, page_size=100)
         
-        # print(f"DEBUG: Encontradas {len(activities)} actividades") # Útil para logs del server
-        
-        agrupados = {}
+        if not activities:
+            return []
+
+        agrupados = []
+        # Procesamos todas las actividades de 'FILL'
         for f in activities:
             symbol = getattr(f, 'symbol', '')
             side = getattr(f, 'side', '').upper()
@@ -100,59 +105,58 @@ def obtener_posiciones_cerradas():
             if isinstance(t, str):
                 t = parser.parse(t)
             
-            time_key = t.strftime('%Y-%m-%d %H:%M')
-            key = f"{symbol}_{side}_{time_key}"
-            
-            if key not in agrupados:
-                agrupados[key] = {
-                    's': symbol,
-                    'side': side,
-                    'q': 0.0,
-                    'total_val': 0.0,
-                    'time': t.isoformat()
-                }
-            
-            agrupados[key]['q'] += qty
-            agrupados[key]['total_val'] += qty * price
+            agrupados.append({
+                's': symbol,
+                'side': side,
+                'q': qty,
+                'p': price,
+                'time': t
+            })
+
+        # Ordenar por tiempo (ascendente) para reconstruir el historial
+        agrupados.sort(key=lambda x: x['time'])
 
         res = []
-        buys = {}
-        # Ordenar de antiguo a nuevo para casar P/L correctamente
-        sorted_keys = sorted(agrupados.keys(), key=lambda x: agrupados[x]['time'])
-        
-        for k in sorted_keys:
-            item = agrupados[k]
-            avg_p = item['total_val'] / item['q']
-            
+        # Diccionario para trackear lotes de compra por símbolo (FIFO)
+        inventory = {} 
+
+        for item in agrupados:
+            sym = item['s']
             if item['side'] == 'BUY':
-                buys[item['s']] = avg_p
+                if sym not in inventory: inventory[sym] = []
+                inventory[sym].append(item)
             elif item['side'] == 'SELL':
-                entry = buys.get(item['s'])
-                pl = (avg_p - entry) * item['q'] if entry else 0
+                # Intentamos buscar el precio de entrada (matching)
+                entry_price = None
+                if sym in inventory and len(inventory[sym]) > 0:
+                    # Usamos el primer lote de compra (FIFO) para el matching
+                    entry_batch = inventory[sym].pop(0)
+                    entry_price = entry_batch['p']
+                
+                pl = (item['p'] - entry_price) * item['q'] if entry_price else 0
+                
                 res.insert(0, {
-                    's': item['s'],
+                    's': sym,
                     'side': 'SELL',
                     'q': round(item['q'], 4),
-                    'p': round(avg_p, 4),
-                    'entry': round(entry, 4) if entry else None,
+                    'p': round(item['p'], 4),
+                    'entry': round(entry_price, 4) if entry_price else None,
                     'pl': round(pl, 2),
-                    'time': item['time']
+                    'time': item['time'].isoformat()
                 })
         
-        # Si NO hay cierres calculados (res vacío), mostrar los últimos movimientos agrupados (FALLBACK)
-        # Esto sirve para que el usuario vea AL MENOS las compras abiertas o ventas sin match.
+        # Si NO hay cierres calculados (res vacío), mostramos las actividades brutas como fallback
         if not res:
-            final_fallback = [{ 
+            return [{ 
                 's': i['s'], 
                 'side': i['side'], 
                 'q': round(i['q'], 4), 
-                'p': round(i['total_val']/i['q'], 4), 
+                'p': round(i['p'], 4), 
                 'pl': 0, 
-                'time': i['time'] 
-            } for i in sorted(agrupados.values(), key=lambda x: x['time'], reverse=True)[:10]]
-            return final_fallback
+                'time': i['time'].isoformat() 
+            } for i in sorted(agrupados, key=lambda x: x['time'], reverse=True)[:20]]
             
-        return res[:10]
+        return res[:20]
     except Exception as e:
         print(f"ERROR en obtener_posiciones_cerradas: {e}")
         return []
