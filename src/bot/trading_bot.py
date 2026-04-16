@@ -69,6 +69,8 @@ class TradingBot:
         self.confluencias_short = []
         self.patron            = None
         self.decision          = None
+        self.regime            = None
+        self.adx_val           = 0.0
 
         self._imprimir_cabecera()
 
@@ -155,12 +157,14 @@ class TradingBot:
         self.confluencias_short = resultado['short']
         total_long              = resultado['total_long']
         total_short             = resultado['total_short']
+        self.regime             = resultado.get('regime')
+        self.adx_val            = resultado.get('adx')
 
         precio   = self.datos['close'].iloc[-1]
         atr      = self.indicadores['atr'].iloc[-1]
         
-        # Umbral dinámico: 7 para acciones, 7.5 para cripto
-        umbral = 7.5 if self.is_crypto else 7.0
+        # Umbral dinámico basado en la configuración
+        umbral = self.min_confluencias
 
         decision = {
             'direccion':   'NEUTRAL',
@@ -194,7 +198,7 @@ class TradingBot:
                 "entry_price": round(float(precio), 4),
                 "stop_loss": round(float(decision['gestion']['stop_loss']), 4) if decision['gestion'] else 0,
                 "take_profit_1": round(float(decision['gestion']['take_profit']), 4) if decision['gestion'] else 0,
-                "take_profit_2": round(float(decision['gestion']['take_profit'] * 1.5), 4) if decision['gestion'] else 0,
+                "take_profit_2": round(float(precio + (precio - decision['gestion']['take_profit']) * -1.5), 4) if decision['gestion'] else 0,
                 "score": float(max(total_long, total_short)),
                 "position_size_pct": self.riesgo * 100,
                 "confidence": round(max(total_long, total_short) / 10, 2),
@@ -212,18 +216,18 @@ class TradingBot:
             expert_output = {
                 "signal": decision['direccion'],
                 "ticker": "CRYPTO",
-                "btc_macro": "bull" if self.indicadores['ema_50'].iloc[-1] > self.indicadores['ema_200'].iloc[-1] else "neutral",
+                "macro_trend": "bull" if self.indicadores['ema_50'].iloc[-1] > self.indicadores['ema_200'].iloc[-1] else "neutral",
                 "regime": regime,
                 "entry_price": round(float(precio), 4),
                 "entry_2_price": round(float(precio * 1.002), 4),
                 "stop_loss": round(float(decision['gestion']['stop_loss']), 4) if decision['gestion'] else 0,
                 "take_profit_1": round(float(decision['gestion']['take_profit']), 4) if decision['gestion'] else 0,
-                "take_profit_2": round(float(decision['gestion']['take_profit'] * 1.6), 4) if decision['gestion'] else 0,
+                "take_profit_2": round(float(precio + (precio - decision['gestion']['take_profit']) * -1.5), 4) if decision['gestion'] else 0,
                 "score": float(total_long),
                 "position_size_pct": self.riesgo * 100,
                 "confidence": round(total_long / 10, 2),
                 "reason": decision['razon'],
-                "invalidation": "BTC Bearish flip or RSI divergence against"
+                "invalidation": "Macro Bearish flip or RSI divergence against"
             }
             decision['expert_json'] = expert_output
             print("\n[CRYPTO EXPERT JSON]:")
@@ -295,6 +299,7 @@ class TradingBot:
                 print(f"   {c}")
         else:
             print("   [MISS] Ninguna")
+        print(f"   TOTAL SCORE: {self.decision['total_long']}/10")
 
         print(f"\nCONFLUENCIAS BAJISTAS ({len(self.confluencias_short)}):")
         if self.confluencias_short:
@@ -302,6 +307,10 @@ class TradingBot:
                 print(f"   {c}")
         else:
             print("   [MISS] Ninguna")
+        print(f"   TOTAL SCORE: {self.decision['total_short']}/10")
+
+        if self.regime:
+            print(f"\n🔍 Régimen detectado: {self.regime} (ADX: {self.adx_val:.1f})")
 
         # -- Decisión ---------------------------------------------------------
         print(f"\n{sep}")

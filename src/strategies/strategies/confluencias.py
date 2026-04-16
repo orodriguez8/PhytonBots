@@ -107,9 +107,6 @@ def contar_confluencias(datos: pd.DataFrame, indicadores: dict, is_crypto: bool 
             short_confs.append("🔴 Patrón de Impulso Confirmado (+1)")
 
         # Inyectamos el score en el resultado para el bot
-        long_confs.append(f"TOTAL SCORE: {score_long}/10")
-        short_confs.append(f"TOTAL SCORE: {score_short}/10")
-        
         final_long = score_long
         final_short = score_short
 
@@ -126,10 +123,10 @@ def contar_confluencias(datos: pd.DataFrame, indicadores: dict, is_crypto: bool 
         adx  = indicadores.get('adx', pd.Series(0, index=datos.index)).iloc[-1]
         vwap = indicadores.get('vwap', datos['close']).iloc[-1]
         
-        # 1. BTC EN TENDENCIA FAVORABLE (Proxy: e50 > e200 en 15m como indicador de mercado)
+        # 1. TENDENCIA MACRO FAVORABLE (Proxy: e50 > e200 en 15m como indicador local)
         if e50 > e200:
             score_long += 2
-            long_confs.append("✅ BTC/Mercado en Tendencia Favorable (+2)")
+            long_confs.append("✅ Tendencia Macro Favorable (Local) (+2)")
         
         # 2. TRIPLE EMA ALINEADA (9 > 21 > 50): +1.5
         if e9.iloc[-1] > e21.iloc[-1] > e50:
@@ -165,9 +162,6 @@ def contar_confluencias(datos: pd.DataFrame, indicadores: dict, is_crypto: bool 
 
         # MODO DE MERCADO (ADX)
         regime = "TREND" if adx > 25 else "MEAN_REV" if adx < 20 else "HYBRID"
-        long_confs.append(f"🔍 Régimen detectado: {regime} (ADX: {adx:.1f})")
-        long_confs.append(f"TOTAL SCORE: {score_long}/10")
-        
         final_long = score_long
         final_short = 0
 
@@ -176,4 +170,6 @@ def contar_confluencias(datos: pd.DataFrame, indicadores: dict, is_crypto: bool 
         'short':       short_confs,
         'total_long':  final_long,
         'total_short': final_short,
+        'regime':      regime if 'regime' in locals() else None,
+        'adx':         adx if 'adx' in locals() else None
     }

@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mera Victorino — Positions</title>
+    <meta name="description" content="Open, closed and pending orders for the Mera Victorino algorithmic trading dashboard.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="app-shell">
+
+        <!-- ═══ Nav Sidebar ══════════════════════════════════════════ -->
+        <nav class="nav-sidebar" id="navSidebar">
+            <div class="nav-brand">
+                <span class="nav-brand-icon">MV</span>
+                <span class="nav-brand-label">Mera Victorino</span>
+            </div>
+            <ul class="nav-links">
+                <li>
+                    <a href="{{ url_for('index') }}" class="nav-link" id="navDashboard">
+                        <i data-lucide="layout-dashboard" class="nav-icon"></i>
+                        <span class="nav-text">Dashboard</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('positions') }}" class="nav-link active" id="navPositions">
+                        <i data-lucide="briefcase" class="nav-icon"></i>
+                        <span class="nav-text">Positions</span>
+                        <span class="nav-badge" id="navPosBadge">0</span>
+                    </a>
+                </li>
+            </ul>
+            <div class="nav-footer">
+                <div class="nav-conn connected" id="navConn">
+                    <span class="nav-dot"></span>
+                    <span id="navConnLabel">Live</span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- ═══ Page Wrapper ═════════════════════════════════════════ -->
+        <div class="page-wrapper">
+
+            <!-- Top Bar -->
+            <header class="topbar" id="topbar">
+                <div class="topbar-left">
+                    <button class="nav-toggle" id="navToggle" onclick="toggleNav()">
+                        <i data-lucide="menu" style="width:16px;height:16px"></i>
+                    </button>
+                    <span class="page-breadcrumb">
+                        <i data-lucide="briefcase" style="width:12px;height:12px"></i>
+                        Positions
+                    </span>
+                </div>
+                <div class="topbar-right">
+                    <div class="latency-badge good" id="latencyBadge">
+                        <span class="latency-dot"></span>
+                        <span id="latencyValue">— ms</span>
+                    </div>
+                    <div class="conn-status connected" id="connStatus">
+                        <i data-lucide="wifi" style="width:12px;height:12px"></i>
+                        <span id="connLabel">Connecting</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- ═══ Main Content ════════════════════════════════════ -->
+            <main class="main-content" id="mainContent">
+
+                <!-- Summary KPI Strip -->
+                <div class="stats-row" id="statsRow">
+                    <div class="stat-card">
+                        <span class="stat-label">Open Positions</span>
+                        <span class="stat-value" id="posCount">0</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Open P/L</span>
+                        <span class="stat-value" id="openPl" style="font-size:1.2rem">$0.00</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">&#8383; Crypto P/L</span>
+                        <span class="stat-value" id="plCrypto" style="font-size:1rem">$0.00</span>
+                        <span class="stat-sub" id="plCryptoRealized" style="font-size:0.65rem">Realiz.: $0.00</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">&#128200; Acciones P/L</span>
+                        <span class="stat-value" id="plStocks" style="font-size:1rem">$0.00</span>
+                        <span class="stat-sub" id="plStocksRealized" style="font-size:0.65rem">Realiz.: $0.00</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Daily Crypto</span>
+                        <span class="stat-value" id="plCryptoDaily" style="font-size:1rem">$0.00</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Monthly Crypto</span>
+                        <span class="stat-value" id="plCryptoMonthly" style="font-size:1rem">$0.00</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Daily Stocks</span>
+                        <span class="stat-value" id="plStocksDaily" style="font-size:1rem">$0.00</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Monthly Stocks</span>
+                        <span class="stat-value" id="plStocksMonthly" style="font-size:1rem">$0.00</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Pending Orders</span>
+                        <span class="stat-value" id="orderCount">0</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Provider</span>
+                        <span class="stat-value" id="providerLabel" style="font-size:1rem">&#8212;</span>
+                    </div>
+                </div>
+
+                <!-- Open Positions -->
+                <div class="panel" id="panelPositions">
+                    <div class="panel-header">
+                        <span class="panel-title">
+                            <i data-lucide="briefcase" style="width:14px;height:14px"></i>
+                            Open Positions
+                        </span>
+                        <span class="panel-badge" id="posBadge">0</span>
+                    </div>
+                    <div class="table-wrap table-has-cards">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Side</th>
+                                    <th>Qty</th>
+                                    <th>Value</th>
+                                    <th>Entry</th>
+                                    <th>Current</th>
+                                    <th>P/L</th>
+                                    <th>Time</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="posTable">
+                                <tr><td colspan="8" class="empty-row">No open positions</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="posCards" class="pos-cards-mobile"></div>
+                </div>
+
+                <!-- Closed Positions -->
+                <div class="panel" id="panelClosed">
+                    <div class="panel-header">
+                        <span class="panel-title">
+                            <i data-lucide="check-circle-2" style="width:14px;height:14px"></i>
+                            Closed Positions (Trades)
+                        </span>
+                        <button class="collapse-btn" onclick="togglePanel('closedBody', this)">
+                            <i data-lucide="chevron-down" style="width:14px;height:14px"></i>
+                        </button>
+                    </div>
+                    <div id="closedBody" class="collapsible" style="max-height:800px">
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Symbol</th>
+                                        <th>Tipo</th>
+                                        <th>Qty</th>
+                                        <th>Precio</th>
+                                        <th>Entrada</th>
+                                        <th>P/L Realiz.</th>
+                                        <th>Hora</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="closedTable">
+                                    <tr><td colspan="7" class="empty-row">No hay actividad todavía</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="pagination-controls" id="closedPagination">
+                            <span class="page-info">Page <span id="closedCurrentPage">1</span> of <span id="closedTotalPages">1</span></span>
+                            <div class="pagination-btns">
+                                <button class="btn-sm" id="prevClosedBtn" onclick="changeClosedPage(-1)">Prev</button>
+                                <button class="btn-sm" id="nextClosedBtn" onclick="changeClosedPage(1)">Next</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Openings -->
+                <div class="panel" id="panelOpened">
+                    <div class="panel-header">
+                        <span class="panel-title">
+                            <i data-lucide="plus-circle" style="width:14px;height:14px"></i>
+                            Recent Openings (Entries)
+                        </span>
+                        <button class="collapse-btn" onclick="togglePanel('openedBody', this)">
+                            <i data-lucide="chevron-down" style="width:14px;height:14px"></i>
+                        </button>
+                    </div>
+                    <div id="openedBody" class="collapsible" style="max-height:800px">
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Symbol</th>
+                                        <th>Tipo</th>
+                                        <th>Qty</th>
+                                        <th>Precio</th>
+                                        <th>Hora</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="openedTable">
+                                    <tr><td colspan="5" class="empty-row">No hay aperturas recientes</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="pagination-controls" id="openedPagination">
+                            <span class="page-info">Page <span id="openedCurrentPage">1</span> of <span id="openedTotalPages">1</span></span>
+                            <div class="pagination-btns">
+                                <button class="btn-sm" id="prevOpenedBtn" onclick="changeOpenedPage(-1)">Prev</button>
+                                <button class="btn-sm" id="nextOpenedBtn" onclick="changeOpenedPage(1)">Next</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pending Orders -->
+                <div class="panel" id="panelOrders">
+                    <div class="panel-header">
+                        <span class="panel-title">
+                            <i data-lucide="clock" style="width:14px;height:14px"></i>
+                            Pending Orders
+                        </span>
+                        <div style="display:flex;gap:0.4rem;align-items:center">
+                            <input type="text" id="orderSearch" onkeyup="filterOrders()" placeholder="Filter..."
+                                   class="search-input">
+                            <button onclick="cancelAllOrders()" class="btn-sm btn-danger">Cancel All</button>
+                            <button class="collapse-btn" onclick="togglePanel('ordersBody', this)">
+                                <i data-lucide="chevron-down" style="width:14px;height:14px"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="ordersBody" class="collapsible" style="max-height:300px">
+                        <div id="pendingOrders"></div>
+                    </div>
+                </div>
+
+            </main>
+        </div><!-- /page-wrapper -->
+    </div><!-- /app-shell -->
+
+    <!-- Auth Modal -->
+    <div id="authModal" class="modal-overlay" style="display:none">
+        <div class="modal-content">
+            <div class="modal-header">
+                <i data-lucide="shield-check" class="modal-icon"></i>
+                <h3 id="modalTitle">Security Access</h3>
+            </div>
+            <div class="modal-body">
+                <p id="modalMsg">Please enter your PIN to continue.</p>
+                <div class="input-group">
+                    <input type="password" id="modalPin" placeholder="&#8226;&#8226;&#8226;&#8226;" maxlength="10">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeAuthModal(null)">Cancel</button>
+                <button class="btn-primary" onclick="submitAuthModal()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script>lucide.createIcons();</script>
+    <script>
+        function toggleNav() {
+            const nav = document.getElementById('navSidebar');
+            if (window.innerWidth <= 768) {
+                nav.classList.toggle('mobile-open');
+            } else {
+                nav.classList.toggle('collapsed');
+            }
+        }
+    </script>
+</body>
+</html>

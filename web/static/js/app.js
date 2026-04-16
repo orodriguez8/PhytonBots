@@ -21,6 +21,12 @@ const S = {
   maxReconnect: 50,
   pollFallbackId: null,
   securityEnabled: false,
+  closedPage: 1,
+  closedPageSize: 20,
+  fullClosedList: [],
+  openedPage: 1,
+  openedPageSize: 20,
+  fullOpenedList: [],
 };
 
 // ── Auth Modal Logic ──────────────────────────────────────
@@ -211,6 +217,17 @@ function updateDashboard(data) {
   if (plCEl) plCEl.className = 'stat-value ' + (plC >= 0 ? 'up' : 'down');
   updateIfChanged('plCryptoRealized', 'Realiz.: ' + (plCR >= 0 ? '+' : '') + '$' + plCR.toFixed(2));
 
+  // --- New Crypto Cards ---
+  const plCD = data.pl_crypto_daily || 0;
+  const plCM = data.pl_crypto_monthly || 0;
+  updateIfChanged('plCryptoDaily', (plCD >= 0 ? '+' : '') + '$' + plCD.toFixed(2));
+  const cdEl = document.getElementById('plCryptoDaily');
+  if (cdEl) cdEl.className = 'stat-value ' + (plCD >= 0 ? 'up' : 'down');
+  
+  updateIfChanged('plCryptoMonthly', (plCM >= 0 ? '+' : '') + '$' + plCM.toFixed(2));
+  const cmEl = document.getElementById('plCryptoMonthly');
+  if (cmEl) cmEl.className = 'stat-value ' + (plCM >= 0 ? 'up' : 'down');
+
   // 5. Stocks P/L Breakdown
   const plS = data.pl_stocks || 0;
   const plSR = data.pl_stocks_realized || 0;
@@ -218,6 +235,17 @@ function updateDashboard(data) {
   const plSEl = document.getElementById('plStocks');
   if (plSEl) plSEl.className = 'stat-value ' + (plS >= 0 ? 'up' : 'down');
   updateIfChanged('plStocksRealized', 'Realiz.: ' + (plSR >= 0 ? '+' : '') + '$' + plSR.toFixed(2));
+
+  // --- New Stocks Cards ---
+  const plSD = data.pl_stocks_daily || 0;
+  const plSM = data.pl_stocks_monthly || 0;
+  updateIfChanged('plStocksDaily', (plSD >= 0 ? '+' : '') + '$' + plSD.toFixed(2));
+  const sdEl = document.getElementById('plStocksDaily');
+  if (sdEl) sdEl.className = 'stat-value ' + (plSD >= 0 ? 'up' : 'down');
+
+  updateIfChanged('plStocksMonthly', (plSM >= 0 ? '+' : '') + '$' + plSM.toFixed(2));
+  const smEl = document.getElementById('plStocksMonthly');
+  if (smEl) smEl.className = 'stat-value ' + (plSM >= 0 ? 'up' : 'down');
 
   // 6. Buying Power
   updateIfChanged('bp', '$' + formatNum(data.bp || 0));
@@ -249,10 +277,15 @@ function updateDashboard(data) {
     renderPositions(data.pos || []);
   }
 
-  // 8. Closed Positions (only if changed)
+  // 8. History Historical (only if changed)
   const closedStr = JSON.stringify(data.closed);
-  if (!prev || JSON.stringify(prev.closed) !== closedStr) {
-    renderClosed(data.closed || []);
+  if (data.closed !== undefined && (!prev || JSON.stringify(prev.closed) !== closedStr)) {
+    renderClosed(data.closed);
+  }
+
+  const openedStr = JSON.stringify(data.opened);
+  if (data.opened !== undefined && (!prev || JSON.stringify(prev.opened) !== openedStr)) {
+    renderOpened(data.opened);
   }
 
   // 9. History
@@ -341,6 +374,12 @@ function renderPositions(pos) {
         ${p.p >= 0 ? '+' : ''}$${p.p.toFixed(2)} <span style="opacity:0.6;font-size:0.7rem">(${p.pct.toFixed(2)}%)</span>
       </td>
       <td style="color:var(--dim-2);font-size:0.75rem;white-space:nowrap">${formatTime(p.t)}</td>
+      <td>
+        <button class="btn-sm btn-danger-soft" onclick="closePosition('${p.s}')" title="Close Position">
+          <i data-lucide="x-circle" style="width:12px;height:12px"></i>
+          <span>Close</span>
+        </button>
+      </td>
     </tr>
   `).join('');
 
@@ -357,33 +396,121 @@ function renderPositions(pos) {
           <div class="pos-card-stat"><span class="pos-card-label">Current</span><span class="pos-card-value">$${p.c}</span></div>
           <div class="pos-card-stat"><span class="pos-card-label">P/L</span><span class="pos-card-value ${p.p >= 0 ? 'up' : 'down'}">${p.p >= 0 ? '+' : ''}$${p.p.toFixed(2)}</span></div>
         </div>
+        <div class="pos-card-footer" style="padding:0 1rem 1rem">
+          <button class="btn-sm btn-danger" style="width:100%" onclick="closePosition('${p.s}')">
+            Close Position
+          </button>
+        </div>
       </div>
     `).join('');
   }
 }
 
-// ── Closed Positions ──────────────────────────────────────
+// ── Closed & Opened History Tables ───────────────────────
 function renderClosed(closed) {
+  if (closed !== undefined && closed !== null) S.fullClosedList = closed;
   const el = document.getElementById('closedTable');
   if (!el) return;
-  if (!closed || closed.length === 0) {
-    el.innerHTML = '<tr><td colspan="7" class="empty-row">No hay actividad todavía</td></tr>';
+
+  if (!S.fullClosedList || S.fullClosedList.length === 0) {
+    el.innerHTML = '<tr><td colspan="7" class="empty-row">No trade activity yet</td></tr>';
+    const pag = document.getElementById('closedPagination');
+    if (pag) pag.style.display = 'none';
     return;
   }
-  el.innerHTML = closed.map(c => `
+
+  const pag = document.getElementById('closedPagination');
+  if (pag) pag.style.display = 'flex';
+
+  const totalPages = Math.ceil(S.fullClosedList.length / S.closedPageSize);
+  if (S.closedPage > totalPages) S.closedPage = totalPages || 1;
+  updateIfChanged('closedCurrentPage', String(S.closedPage));
+  updateIfChanged('closedTotalPages', String(totalPages));
+
+  const start = (S.closedPage - 1) * S.closedPageSize;
+  const pageData = S.fullClosedList.slice(start, start + S.closedPageSize);
+
+  el.innerHTML = pageData.map(c => `
     <tr>
       <td style="font-weight:700">${c.s}</td>
-      <td><span class="badge ${c.side === 'BUY' ? 'up' : 'down'}">${c.side}</span></td>
+      <td><span class="badge ${c.side.includes('BUY') ? 'up' : 'down'}">${c.side}</span></td>
       <td class="mono">${c.q}</td>
-      <td class="mono">$${c.p}</td>
-      <td class="mono">${c.entry ? '$' + c.entry : '—'}</td>
+      <td class="mono">$${formatNum(c.p)}</td>
+      <td class="mono">$${formatNum(c.entry)}</td>
       <td class="${(c.pl || 0) >= 0 ? 'up' : 'down'}" style="font-weight:700;font-family:var(--mono)">
-        ${c.side === 'SELL' ? ((c.pl || 0) >= 0 ? '+' : '') + '$' + (c.pl || 0).toFixed(2) : '—'}
+        ${((c.pl || 0) >= 0 ? '+' : '')}$${(c.pl || 0).toFixed(2)}
       </td>
       <td style="color:var(--dim-2);font-size:0.75rem">${formatTime(c.time)}</td>
     </tr>
   `).join('');
+
+  const prevBtn = document.getElementById('prevClosedBtn');
+  const nextBtn = document.getElementById('nextClosedBtn');
+  if (prevBtn) prevBtn.disabled = S.closedPage === 1;
+  if (nextBtn) nextBtn.disabled = S.closedPage === totalPages;
 }
+
+function renderOpened(opened) {
+  if (opened !== undefined && opened !== null) S.fullOpenedList = opened;
+  const el = document.getElementById('openedTable');
+  if (!el) return;
+
+  if (!S.fullOpenedList || S.fullOpenedList.length === 0) {
+    el.innerHTML = '<tr><td colspan="5" class="empty-row">No recent openings</td></tr>';
+    const pag = document.getElementById('openedPagination');
+    if (pag) pag.style.display = 'none';
+    return;
+  }
+
+  const pag = document.getElementById('openedPagination');
+  if (pag) pag.style.display = 'flex';
+
+  const totalPages = Math.ceil(S.fullOpenedList.length / S.openedPageSize);
+  if (S.openedPage > totalPages) S.openedPage = totalPages || 1;
+  updateIfChanged('openedCurrentPage', String(S.openedPage));
+  updateIfChanged('openedTotalPages', String(totalPages));
+
+  const start = (S.openedPage - 1) * S.openedPageSize;
+  const pageData = S.fullOpenedList.slice(start, start + S.openedPageSize);
+
+  el.innerHTML = pageData.map(o => `
+    <tr>
+      <td style="font-weight:700">${o.s}</td>
+      <td><span class="badge ${o.side === 'BUY' ? 'up' : 'down'}">${o.side}</span></td>
+      <td class="mono">${o.q}</td>
+      <td class="mono">$${formatNum(o.p)}</td>
+      <td style="color:var(--dim-2);font-size:0.75rem">${formatTime(o.time)}</td>
+    </tr>
+  `).join('');
+
+  const prevBtn = document.getElementById('prevOpenedBtn');
+  const nextBtn = document.getElementById('nextOpenedBtn');
+  if (prevBtn) prevBtn.disabled = S.openedPage === 1;
+  if (nextBtn) nextBtn.disabled = S.openedPage === totalPages;
+}
+
+function changeClosedPage(delta) {
+  const totalPages = Math.ceil(S.fullClosedList.length / S.closedPageSize);
+  let next = S.closedPage + delta;
+  if (next < 1) next = 1;
+  if (next > totalPages) next = totalPages;
+  if (next !== S.closedPage) {
+    S.closedPage = next;
+    renderClosed();
+  }
+}
+function changeOpenedPage(delta) {
+  const totalPages = Math.ceil(S.fullOpenedList.length / S.openedPageSize);
+  let next = S.openedPage + delta;
+  if (next < 1) next = 1;
+  if (next > totalPages) next = totalPages;
+  if (next !== S.openedPage) {
+    S.openedPage = next;
+    renderOpened();
+  }
+}
+window.changeClosedPage = changeClosedPage;
+window.changeOpenedPage = changeOpenedPage;
 
 // ── History ───────────────────────────────────────────────
 function renderHistory(history) {
@@ -577,6 +704,44 @@ async function cancelAllOrders() {
     addConsoleLog('error', 'Connection error during cancel.');
   }
 }
+
+async function closePosition(symbol) {
+  if (!confirm(`Are you sure you want to close ${symbol} position completely?`)) return;
+  
+  let pwd = null;
+  if (S.securityEnabled) {
+    pwd = await requestAuth('Confirm Close', `Enter Security PIN to close ${symbol}:`);
+    if (!pwd) return;
+  }
+
+  try {
+    const body = { symbol: symbol };
+    if (pwd) body.password = pwd;
+
+    const res = await fetch('/api/close_position', { 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    
+    if (res.status === 401) {
+      alert('Invalid PIN. Action rejected.');
+      return;
+    }
+
+    const data = await res.json();
+    if (data.ok) {
+        addConsoleLog('order', `Manual close request sent: ${symbol}`);
+    } else {
+        alert('Error: ' + (data.error || 'unknown'));
+        addConsoleLog('error', `Close failed for ${symbol}: ${data.error}`);
+    }
+  } catch (e) {
+    addConsoleLog('error', `Connection error closing result for ${symbol}`);
+  }
+}
+
+window.closePosition = closePosition;
 
 // ── Panel Collapse ────────────────────────────────────────
 function togglePanel(bodyId, btn) {

@@ -13,9 +13,8 @@
 # ATR = Media exponencial del True Range en N periodos
 #
 # Uso en este bot:
-#   Stop Loss  = precio_entrada ± (ATR × 1.5)
-#   Take Profit = precio_entrada ± (ATR × 3.0)
-#   → Stop loss dinámico que se adapta a la volatilidad del mercado
+#   Se utilizan STOCK_ATR_SL/TP y CRYPTO_ATR_SL/TP definidos en config.py
+#   Esto permite un ajuste dinámico que se adapta a la volatilidad del mercado
 # =============================================================================
 
 import pandas as pd

@@ -1,3 +1,6 @@
+eventlet
+boto3
+pyopenssl
 flask
 flask-cors
 flask-socketio
@@ -6,8 +9,8 @@ gevent-websocket
 pandas
 numpy
 python-dotenv
-alpaca-trade-api==3.2.0
-v20
+alpaca-py
+backoff
 requests
 websocket-client
 urllib3<2.0.0

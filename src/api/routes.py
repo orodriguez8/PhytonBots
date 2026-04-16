@@ -4,6 +4,7 @@ import datetime
 import traceback
 from flask import render_template, jsonify, request
 from src.api.server import app, socketio
+from src.core.logger import logger
 from src.bot.engine import (
     state, push_event, build_summary, cancel_all_orders, 
     LIVE_ENABLED, IS_ALPACA, CCXT_EXCHANGE_ID
@@ -19,27 +20,46 @@ def build_api_summary():
         return {'error': str(e)}
 
 @app.route('/')
-def home():
+def index():
     return render_template('index.html')
 
-@app.route('/api/toggle', methods=['POST'])
-def toggle():
-    # Verificar contraseña si está configurada
-    if BOT_PASSWORD:
-        user_pwd = request.json.get('password', '')
-        if user_pwd != BOT_PASSWORD:
-            return jsonify({'ok': False, 'error': 'Invalid PIN'}), 401
-    
-    state.AUTO_TRADING_ACTIVE = not state.AUTO_TRADING_ACTIVE
-    push_event('info', f"Bot toggled → {'ACTIVE' if state.AUTO_TRADING_ACTIVE else 'STANDBY'}", socketio)
-    return jsonify({'ok': True, 'state': state.AUTO_TRADING_ACTIVE})
+@app.route('/positions')
+def positions():
+    return render_template('positions.html')
 
+@app.route('/api/status')
+def status():
+    return jsonify({
+        'modo': 'ALPACA' if IS_ALPACA else 'CRYPTO',
+        'auto_trading': state.AUTO_TRADING_ACTIVE,
+        'instrumento': 'PORTFOLIO'
+    })
+
+@app.route('/api/run')
 @app.route('/api/summary')
 def summary():
     data = build_summary()
     if 'error' in data:
         return jsonify(data), 500
     return jsonify(data)
+
+@app.route('/api/toggle-auto', methods=['POST'])
+@app.route('/api/toggle', methods=['POST'])
+def toggle():
+    logger.info("📩 Recibida petición toggle de bot")
+    # Verificar contraseña si está configurada (y no es vacía)
+    if BOT_PASSWORD and len(BOT_PASSWORD) > 0:
+        req_data = request.get_json(silent=True) or {}
+        user_pwd = str(req_data.get('password', '')).strip()
+        if user_pwd != BOT_PASSWORD:
+            logger.warning(f"🚫 PIN Inválido en toggle. Recibido: '{user_pwd}'")
+            return jsonify({'ok': False, 'error': 'Invalid PIN'}), 401
+    
+    state.AUTO_TRADING_ACTIVE = not state.AUTO_TRADING_ACTIVE
+    msg = f"Bot toggled → {'ACTIVE' if state.AUTO_TRADING_ACTIVE else 'STANDBY'}"
+    logger.info(f"✅ {msg}")
+    push_event('info', msg, socketio)
+    return jsonify({'ok': True, 'state': state.AUTO_TRADING_ACTIVE, 'auto_trading': state.AUTO_TRADING_ACTIVE})
 
 @app.route('/api/cancel_all', methods=['POST'])
 def cancel_all():
@@ -95,8 +115,6 @@ def portfolio_history():
     alpaca_period = m.get(period, '1M')
     
     # Map the user-friendly names to Alpaca timeframes
-    # For a day, we want finer granularity (1Min or 5Min)
-    # For a year, we want daily candles
     tf_map = {'DAY': '1Min', 'WEEK': '5Min', 'MONTH': '1D', 'YEAR': '1D', 'ALL': '1D'}
     alpaca_tf = tf_map.get(period, '1H')
     
@@ -106,3 +124,48 @@ def portfolio_history():
         return jsonify(data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/close_position', methods=['POST'])
+def close_position():
+    # Verificar contraseña si está configurada
+    if BOT_PASSWORD:
+        user_pwd = request.json.get('password', '')
+        if user_pwd != BOT_PASSWORD:
+            return jsonify({'ok': False, 'error': 'Invalid PIN'}), 401
+    
+    symbol = request.json.get('symbol')
+    if not symbol:
+        return jsonify({'ok': False, 'error': 'Symbol is required'}), 400
+        
+    if LIVE_ENABLED:
+        try:
+            from src.bot.engine import IS_ALPACA, place_order, get_positions, cancel_orders_for_symbol
+            from src.execution import alpaca_client
+            
+            if IS_ALPACA:
+                cancel_orders_for_symbol(symbol)
+                alpaca_client.cerrar_posicion(symbol)
+            else:
+                # CCXT closure logic
+                pos = get_positions()
+                match = next((p for p in pos if p['instrumento'] == symbol), None)
+                if match:
+                    side = 'sell' if match['direccion'] == 'LONG' else 'buy'
+                    place_order(symbol, match['unidades'], side)
+                else:
+                    return jsonify({'ok': False, 'error': 'Position not found'}), 404
+
+            state.BOT_HISTORY.insert(0, {
+                'time': datetime.datetime.now().isoformat(),
+                'sym': symbol,
+                'type': 'CLOSE',
+                'price': 0,
+                'reason': 'Manual close',
+            })
+            push_event('order', f"Position closed manually: {symbol}", socketio)
+            return jsonify({'ok': True})
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({'ok': False, 'error': f"Error closing {symbol}: {str(e)}"}), 500
+            
+    return jsonify({'ok': False, 'error': 'Live trading not enabled'})

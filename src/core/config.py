@@ -1,9 +1,49 @@
 
 import os
+import json
 from dotenv import load_dotenv
+try:
+    import boto3
+    from botocore.exceptions import ClientError
+except ImportError:
+    boto3 = None
 
-# Cargar variables de entorno desde .env si existe
-load_dotenv()
+# Detect project root for absolute .env loading
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+load_dotenv(os.path.join(BASE_DIR, '.env'))
+
+def get_aws_secret(secret_name="secretAPI", region_name="eu-north-1"):
+    """
+    Intenta obtener secretos de AWS Secrets Manager si no están en entorno.
+    """
+    if not boto3:
+        return {}
+    
+    # Si ya tenemos las llaves principales en el entorno, no necesitamos AWS
+    if os.getenv('ALPACA_API_KEY') and os.getenv('ALPACA_SECRET_KEY'):
+        return {}
+        
+    try:
+        session = boto3.session.Session()
+        client = session.client(service_name='secretsmanager', region_name=region_name)
+        get_secret_value_response = client.get_secret_value(SecretId=secret_name)
+        if 'SecretString' in get_secret_value_response:
+            return json.loads(get_secret_value_response['SecretString'])
+    except Exception as e:
+        # Fallback silencioso si no hay permisos de IAM o no existe el secreto
+        return {}
+    return {}
+
+# Fusionar secretos de AWS en el entorno si no están presentes
+aws_secrets = get_aws_secret()
+for key, value in aws_secrets.items():
+    if not os.getenv(key):
+        os.environ[key] = str(value)
+        # Sincronizar también el SDK de Alpaca que usa variables específicas
+        if key == 'ALPACA_API_KEY' and not os.getenv('APCA_API_KEY_ID'):
+            os.environ['APCA_API_KEY_ID'] = str(value)
+        if key == 'ALPACA_SECRET_KEY' and not os.getenv('APCA_API_SECRET_KEY'):
+            os.environ['APCA_API_SECRET_KEY'] = str(value)
 
 # =============================================================================
 # CONFIGURACIÓN CENTRAL DEL BOT DE TRADING
@@ -19,7 +59,9 @@ BOT_PASSWORD        = os.getenv('BOT_PASSWORD', '').strip()
 
 # --- Capital y Riesgo ---
 CAPITAL_INICIAL = 10_000.0       # Capital inicial en USD
-RIESGO_POR_OPERACION = 0.015      # Máximo 1.5% del capital por operación (Conservative)
+RIESGO_POR_OPERACION = 0.01      # Riesgo estándar para Acciones (1%)
+RIESGO_CRYPTO        = 0.02      # Riesgo moderado para Cripto (2%)
+CRYPTO_TRADING_ENABLED = False    # Desactiva el trading de cryptos sin borrar el código
 
 # --- Modo de Trading ---
 # 'ALPACA' para Acciones (Alpaca)
@@ -55,23 +97,27 @@ OANDA_GRANULARITY = os.getenv('OANDA_GRANULARITY', 'M1')
 # --- Multiplicadores ATR para Stop Loss y Take Profit ---
 # Estrategia Asimétrica para ACCIONES (Trend Following)
 STOCK_ATR_SL = 1.8       # Stop Loss flexible (1.8x ATR)
-STOCK_ATR_TP = 3.6       # Take Profit 1:2 Risk/Reward — más alcanzable
+STOCK_ATR_TP = 3.0       # Take Profit 1:1.66 Risk/Reward — más alcanzable
 
-# Estrategia Conservadora para CRIPTO (Mean Reversion con filtro macro)
-# Ratio 1:1.5 — conservador para entornos volátiles
-CRYPTO_ATR_SL = 2.0
-CRYPTO_ATR_TP = 3.0
+# Estrategia Equilibrada para CRIPTO (Basado en volatilidad)
+CRYPTO_ATR_SL = 2.0      # Stop Loss por debajo de oscilaciones (2.0x ATR)
+CRYPTO_ATR_TP = 2.5      # Take Profit 1:1.25 Risk/Reward (2.5x ATR)
 
 
 # --- Vigilancia (Watchlist) ---
 WATCHLIST = [
-    'AAPL', 'MSFT', 'TSLA', 'META', 'AMZN', 'NVDA',
-    'BTC/USD', 'ETH/USD', 'SOL/USD', 'LTC/USD'
+    # --- Acciones más Líquidas (U.S. & ADRs) ---
+    'NVDA', 'TSLA', 'AAPL', 'AMD', 'AMZN', 'MSFT', 'META', 'GOOGL', 'NFLX', 'PLTR',
+    'AVGO', 'SMCI', 'BABA', 'NIO', 'COIN', 'MSTR', 'MARA', 'ARM', 'MU', 'PYPL',
+    'SQ', 'JPM', 'BAC', 'DIS', 'COST', 'WMT', 'LLY', 'UNH', 'V', 'MA',
+    
+    # --- Criptomonedas (vía CCXT/Coinbase) ---
+    'BTC/USD', 'ETH/USD', 'SOL/USD', 'LTC/USD', 'LINK/USD', 'DOT/USD'
 ]
 # Nota: Forex en Alpaca requiere permisos específicos, pero el bot ya lo soporta.
 
 # --- Umbral de Confluencias ---
-MIN_CONFLUENCIAS = 7             # Umbral del Sistema Experto (Acciones: Score >= 7)
+MIN_CONFLUENCIAS = 5.5           # Umbral reducido para scalping (Más señales)
 
 # --- Parámetros de Indicadores ---
 PERIODO_EMA_RAPIDA  = 20         # EMA rápida (corto plazo)

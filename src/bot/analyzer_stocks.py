@@ -6,7 +6,7 @@ import logging
 import datetime
 from src.data.alpaca import obtener_datos_alpaca
 from src.strategies.patterns.velas import detectar_patron
-from src.core.config import ALPACA_API_KEY
+from src.core.config import ALPACA_API_KEY, STOCK_ATR_SL, STOCK_ATR_TP
 
 logger = logging.getLogger(__name__)
 
@@ -166,14 +166,16 @@ class StockAnalyzer:
         entry_price = float(last['close'])
         atr = df.ta.atr(length=14).iloc[-1]
         
-        # Stop inicial: estructura (swing) o ATR*1.5 (el mayor)
-        # Simplificación: usamos 1.5 ATR como base
-        sl_dist = max(atr * 1.5, entry_price * 0.01) # Mínimo 1%
+        # Stop y TP basados en configuración central (STOCK_ATR_SL y STOCK_ATR_TP)
+        sl_dist = max(atr * STOCK_ATR_SL, entry_price * 0.01) # Mínimo 1% de seguridad
         stop_loss = entry_price - sl_dist if signal == "LONG" else entry_price + sl_dist
         
-        # Take Profit (Risk/Reward 2:1 mínimo)
-        tp1 = entry_price + (sl_dist * 2.0) if signal == "LONG" else entry_price - (sl_dist * 2.0)
-        tp2 = entry_price + (sl_dist * 3.5) if signal == "LONG" else entry_price - (sl_dist * 3.5)
+        # Take Profit Primario (según STOCK_ATR_TP relativo al ATR)
+        tp1_dist = atr * STOCK_ATR_TP
+        tp1 = entry_price + tp1_dist if signal == "LONG" else entry_price - tp1_dist
+        
+        # Take Profit Secundario (1.5x del primario para tendencia extendida)
+        tp2 = entry_price + (tp1_dist * 1.5) if signal == "LONG" else entry_price - (tp1_dist * 1.5)
 
         # Result construction
         result = {

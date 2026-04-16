@@ -1,59 +1,74 @@
-
 import time
 import datetime
+from datetime import timezone
 import traceback
+import threading
 from src.core.logger import logger
 from src.utils.helpers import safe_float
 from src.bot.trading_bot import TradingBot
 from src.bot.analyzer_crypto import CryptoAnalyzer
 from src.core.config import (
-    CAPITAL_INICIAL, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS, WATCHLIST,
-    TRADING_PROVIDER, ALPACA_API_KEY, ALPACA_SECRET_KEY,
-    CCXT_API_KEY, CCXT_EXCHANGE_ID, BOT_PASSWORD,
-    OANDA_API_KEY, OANDA_ACCOUNT_ID
+    CAPITAL_INICIAL, RIESGO_POR_OPERACION, RIESGO_CRYPTO, MIN_CONFLUENCIAS, WATCHLIST,
+    TRADING_MODE_CRYPTO, ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_PAPER,
+    CCXT_API_KEY, CCXT_EXCHANGE_ID, BOT_PASSWORD, CRYPTO_TRADING_ENABLED
 )
 from src.core.health import get_circuit_breaker_status
 from src.risk.management import calcular_gestion_riesgo
 
 
 # Providers and wrappers
-from src.execution import alpaca_client, ccxt_client, oanda_client
-from src.data import alpaca, ccxt, oanda
+from src.execution import alpaca_client, ccxt_client, alpaca_stream
+from src.data import alpaca, ccxt, alpaca_data_stream
 
-PROVIDER = TRADING_PROVIDER.upper()
+PROVIDER = (TRADING_MODE_CRYPTO or 'ALPACA').upper()
 IS_ALPACA = PROVIDER == 'ALPACA'
-IS_OANDA = PROVIDER == 'OANDA'
-
-if IS_ALPACA:
-    LIVE_ENABLED = bool(ALPACA_API_KEY and ALPACA_SECRET_KEY)
-elif IS_OANDA:
-    LIVE_ENABLED = bool(OANDA_API_KEY and OANDA_ACCOUNT_ID)
-else:
-    LIVE_ENABLED = bool(CCXT_API_KEY)
+LIVE_ENABLED = bool(ALPACA_API_KEY and ALPACA_SECRET_KEY) if IS_ALPACA else bool(CCXT_API_KEY)
 
 # ── Dynamic State (Shared via references or simple instance) ─────────────────
+import multiprocessing
+
+# ── Dynamic State (Shared via multiprocessing to ensure consistency) ─────────
 class TradingState:
-    AUTO_TRADING_ACTIVE = False
-    BOT_HISTORY = []
-    LAST_RUN_LOG = {}
-    CONSOLE_EVENTS = []
-    MAX_CONSOLE = 60
+    def __init__(self):
+        self._active = multiprocessing.Value('b', False)
+        self.BOT_HISTORY = []
+        self.LAST_RUN_LOG = {}
+        self.CONSOLE_EVENTS = []
+        self.MAX_CONSOLE = 60
+        self.LOCK = threading.Lock()
+
+    @property
+    def AUTO_TRADING_ACTIVE(self):
+        return bool(self._active.value)
+
+    @AUTO_TRADING_ACTIVE.setter
+    def AUTO_TRADING_ACTIVE(self, value):
+        self._active.value = bool(value)
 
 state = TradingState()
 
-# ── Cache para posiciones cerradas (evita spam a la API de Alpaca) ────────────
-_closed_cache = []
+# ── Cache para historial (evita spam a la API de Alpaca) ───────────
+_closed_cache = {'closed': [], 'opened': []}
 _closed_cache_ts = 0.0
 CLOSED_CACHE_TTL = 60  # segundos
 
 def _get_closed_cached():
-    """Devuelve posiciones cerradas usando caché TTL para no sobrecargar la API de Alpaca."""
+    """Devuelve historial usando caché TTL para no sobrecargar la API de Alpaca."""
     global _closed_cache, _closed_cache_ts
     now = time.time()
-    if now - _closed_cache_ts > CLOSED_CACHE_TTL:
-        _closed_cache = get_closed_positions()
-        _closed_cache_ts = now
+    
+    # Si la caché está vacía o ha expirado, intentar actualizarla
+    if not _closed_cache['closed'] or (now - _closed_cache_ts > CLOSED_CACHE_TTL):
+        try:
+            newData = get_closed_positions()
+            if newData and (newData.get('closed') or newData.get('opened')):
+                _closed_cache = newData
+                _closed_cache_ts = now
+        except Exception as e:
+            logger.debug(f"Error actualizando caché de historial: {e}")
+            
     return _closed_cache
+
 
 def push_event(etype, msg, socketio=None):
     """Push an event to the console log and broadcast via WebSocket."""
@@ -62,9 +77,10 @@ def push_event(etype, msg, socketio=None):
         'msg': msg,
         'time': datetime.datetime.now().strftime('%H:%M:%S'),
     }
-    state.CONSOLE_EVENTS.insert(0, evt)
-    if len(state.CONSOLE_EVENTS) > state.MAX_CONSOLE:
-        state.CONSOLE_EVENTS.pop()
+    with state.LOCK:
+        state.CONSOLE_EVENTS.insert(0, evt)
+        if len(state.CONSOLE_EVENTS) > state.MAX_CONSOLE:
+            state.CONSOLE_EVENTS.pop()
     
     if socketio:
         try:
@@ -74,64 +90,75 @@ def push_event(etype, msg, socketio=None):
 
 def get_data(symbol):
     if not LIVE_ENABLED: return None
-    if IS_ALPACA: return alpaca.obtener_datos_alpaca(symbol)
-    if IS_OANDA:  return oanda.obtener_datos_oanda(symbol)
-    return ccxt.obtener_datos_ccxt(symbol)
+    return alpaca.obtener_datos_alpaca(symbol) if IS_ALPACA else ccxt.obtener_datos_ccxt(symbol)
 
 def get_account():
     if not LIVE_ENABLED: return None
-    if IS_ALPACA: return alpaca_client.obtener_cuenta()
-    if IS_OANDA:  return oanda_client.obtener_cuenta()
-    return ccxt_client.obtener_cuenta_ccxt()
+    return alpaca_client.obtener_cuenta() if IS_ALPACA else ccxt_client.obtener_cuenta_ccxt()
 
 def get_positions():
     if not LIVE_ENABLED: return []
-    if IS_ALPACA: return alpaca_client.obtener_posiciones_abiertas()
-    if IS_OANDA:  return oanda_client.obtener_posiciones_abiertas()
-    return ccxt_client.obtener_posiciones_abiertas_ccxt()
+    return alpaca_client.obtener_posiciones_abiertas() if IS_ALPACA else ccxt_client.obtener_posiciones_abiertas_ccxt()
 
 def get_orders():
     if not LIVE_ENABLED: return []
-    if IS_ALPACA: return alpaca_client.obtener_ordenes_activas()
-    if IS_OANDA:  return [] # Oanda client doesn't have a direct 'get_orders' yet in this file
-    return []
+    return alpaca_client.obtener_ordenes_activas() if IS_ALPACA else []
 
 def get_closed_positions():
     if not LIVE_ENABLED: return []
-    if IS_ALPACA: return alpaca_client.obtener_posiciones_cerradas()
-    # Oanda closed positions logic can be added later if needed
-    return []
+    return alpaca_client.obtener_posiciones_cerradas() if IS_ALPACA else []
 
 def place_order(symbol, qty, side, tp=None, sl=None):
     if not LIVE_ENABLED: return None
     if IS_ALPACA:
         return alpaca_client.colocar_orden_mercado(symbol, qty, side, tp, sl)
-    if IS_OANDA:
-        # Note: Oanda client takes (direction, units, instrument, stop_loss, take_profit)
-        # We normalize direction to 'LONG'/'SHORT'
-        direction = 'LONG' if side.lower() == 'buy' else 'SHORT'
-        return oanda_client.colocar_orden_mercado(direction, qty, symbol, sl, tp)
     return ccxt_client.colocar_orden_mercado_ccxt(symbol, qty, side)
 
 def cancel_all_orders():
     if not LIVE_ENABLED: return False
-    if IS_ALPACA: return alpaca_client.cancelar_todas_las_ordenes()
-    # Oanda equivalent would go here
-    return False
+    return alpaca_client.cancelar_todas_las_ordenes() if IS_ALPACA else ccxt_client.cancelar_todas_las_ordenes_ccxt()
 
 def cancel_orders_for_symbol(symbol):
     """Cancela órdenes específicamente para un símbolo antes de cerrar posición."""
     if not IS_ALPACA or not LIVE_ENABLED: return
+    alpaca_client.cancelar_ordenes_por_simbolo(symbol)
+    time.sleep(0.5)
+
+
+def limpiar_ordenes_atascadas(socketio=None):
+    """
+    Busca órdenes de Cripto que lleven más de 60 segundos abiertas (atascadas por slippage)
+    y las cancela para liberar el bot.
+    """
+    if not LIVE_ENABLED or not IS_ALPACA: return
+    
     try:
-        api = alpaca_client._get_api()
-        norm_sym = symbol.replace('/', '').upper()
-        orders = api.list_orders(status='open', symbols=[norm_sym])
-        for o in orders:
-            api.cancel_order(o.id)
-            logger.info(f"Canceled pending order {o.id} for {symbol} before closing.")
-        time.sleep(0.5) # Give Alpaca a moment to process the cancellations
+        current_orders = get_orders()
+        now = datetime.datetime.now(timezone.utc)
+        
+        for o in current_orders:
+            # Solo aplicamos limpieza agresiva a Cripto
+            is_crypto = any(q in o['symbol'].upper() for q in ['USD', 'USDT', 'USDC', '/'])
+            if not is_crypto: continue
+            
+            # Parsear fecha de creación (ISO format de Alpaca)
+            try:
+                created_at = datetime.datetime.fromisoformat(o['created_at'].replace('Z', '+00:00'))
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+            except:
+                continue
+                
+            segundos_abierta = (now - created_at).total_seconds()
+            
+            if segundos_abierta > 60: # 1 minuto máximo para mercado cripto
+                logger.info(f"🕒 LIMPIEZA: Cancelando orden atascada de {o['symbol']} ({segundos_abierta:.0f}s abierta)")
+                push_event('warn', f"Stale order cleaned: {o['symbol']} ({segundos_abierta:.0f}s)", socketio)
+                
+                api = alpaca_client._get_api()
+                api.cancel_order(o['id'])
     except Exception as e:
-        logger.error(f"Error canceling orders for {symbol}: {e}")
+        logger.debug(f"Error en limpieza de órdenes: {e}")
 
 
 def build_summary():
@@ -153,16 +180,21 @@ def build_summary():
             'pl_stocks_realized': 0.0,
             'pos': [],
             'closed': [],
+            'opened': [],
             'orders': [],
             'security_enabled': bool(BOT_PASSWORD),
         }
         if LIVE_ENABLED:
-            acc = get_account()
-            if acc:
-                data['equity'] = safe_float(acc.get('nav', 0))
-                data['bp'] = safe_float(acc.get('margen_libre', 0))
-                data['day_pl'] = safe_float(acc.get('pl', 0))
+            try:
+                acc = get_account()
+                if acc:
+                    data['equity'] = safe_float(acc.get('nav', 0))
+                    data['bp'] = safe_float(acc.get('margen_libre', 0))
+                    data['day_pl'] = safe_float(acc.get('pl', 0))
+            except Exception as e:
+                logger.debug(f"Summary: Error obteniendo cuenta: {e}")
 
+            try:
                 raw_pos = get_positions()
                 data['pos'] = [{
                     's': p['instrumento'],
@@ -175,11 +207,15 @@ def build_summary():
                     'v': safe_float(p.get('valor_total', 0)),
                     't': p.get('fecha_entrada', None)
                 } for p in raw_pos]
+            except Exception as e:
+                logger.debug(f"Summary: Error obteniendo posiciones: {e}")
 
-                total_open_pl = sum(p['p'] for p in data['pos'])
-                data['pl'] = safe_float(total_open_pl)
-
+            data['pl'] = safe_float(sum(p['p'] for p in data['pos']))
+            
+            try:
                 data['orders'] = get_orders()
+            except Exception as e:
+                logger.debug(f"Summary: Error obteniendo ordenes: {e}")
 
         # ── Desglose P/L: Crypto vs Acciones ──────────────────────────────────
         def _is_crypto(sym):
@@ -188,13 +224,55 @@ def build_summary():
         data['pl_crypto'] = safe_float(sum(p['p'] for p in data['pos'] if _is_crypto(p['s'])))
         data['pl_stocks'] = safe_float(sum(p['p'] for p in data['pos'] if not _is_crypto(p['s'])))
 
-        # Cargar posiciones cerradas (si hay keys configuradas)
+        # Cargar historial (si hay keys configuradas)
         if LIVE_ENABLED:
-            data['closed'] = _get_closed_cached()
+            try:
+                hist = _get_closed_cached()
+                data['closed'] = hist.get('closed', [])
+                data['opened'] = hist.get('opened', [])
+            except Exception as e:
+                logger.debug(f"Summary: Error obteniendo historial: {e}")
 
         cl = data.get('closed', [])
-        data['pl_crypto_realized'] = safe_float(sum((c.get('pl') or 0) for c in cl if _is_crypto(c['s']) and c.get('pl') is not None))
-        data['pl_stocks_realized'] = safe_float(sum((c.get('pl') or 0) for c in cl if not _is_crypto(c['s']) and c.get('pl') is not None))
+        now_dt = datetime.datetime.now(timezone.utc)
+        today_str = now_dt.strftime('%Y-%m-%d')
+        month_str = now_dt.strftime('%Y-%m')
+
+        data['pl_crypto_realized'] = 0.0
+        data['pl_stocks_realized'] = 0.0
+        data['pl_crypto_daily'] = 0.0
+        data['pl_stocks_daily'] = 0.0
+        data['pl_crypto_monthly'] = 0.0
+        data['pl_stocks_monthly'] = 0.0
+
+        for c in cl:
+            pl_val = safe_float(c.get('pl', 0))
+            is_cryp = _is_crypto(c['s'])
+            
+            # Global Realized (from the loaded history)
+            if is_cryp:
+                data['pl_crypto_realized'] += pl_val
+            else:
+                data['pl_stocks_realized'] += pl_val
+
+            # Filter by date
+            c_time = c.get('time', '')
+            if c_time:
+                try:
+                    # Alpaca time is usually ISO with timezone
+                    dt = datetime.datetime.fromisoformat(c_time.replace('Z', '+00:00'))
+                    item_day = dt.strftime('%Y-%m-%d')
+                    item_month = dt.strftime('%Y-%m')
+                    
+                    if item_day == today_str:
+                        if is_cryp: data['pl_crypto_daily'] += pl_val
+                        else: data['pl_stocks_daily'] += pl_val
+                    
+                    if item_month == month_str:
+                        if is_cryp: data['pl_crypto_monthly'] += pl_val
+                        else: data['pl_stocks_monthly'] += pl_val
+                except:
+                    pass
 
 
         return data
@@ -204,41 +282,98 @@ def build_summary():
 
 def trading_loop(socketio=None):
     """Main trading loop (runs in background thread)"""
+    
+    stream_mgr = None
+    # Iniciar stream de eventos (Trade Updates)
+    if IS_ALPACA and LIVE_ENABLED:
+        try:
+            stream_mgr = alpaca_stream.AlpacaTradingStream(state, lambda t, m: push_event(t, m, socketio))
+            stream_mgr.start()
+        except Exception as e:
+            logger.error(f"Error iniciando TradingStream: {e}")
+
+    # Iniciar stream de datos (Precios en tiempo real)
+    if IS_ALPACA and LIVE_ENABLED:
+        try:
+            p_stream = alpaca_data_stream.AlpacaDataStream(WATCHLIST)
+            p_stream.start()
+        except Exception as e:
+            logger.info("⚡ Motor de trading iniciado y esperando señales...")
+
     while True:
-        if state.AUTO_TRADING_ACTIVE:
+        try:
+            # Procesar eventos acumulados del proceso del stream
+            if stream_mgr:
+                stream_mgr.process_incoming_events()
+            
+            if not state.AUTO_TRADING_ACTIVE:
+                # Latido para confirmar que el hilo no está colgado
+                if time.time() % 60 < 1: # Log cada ~60s para no inundar
+                     logger.debug("⏳ Motor en standby, esperando activación...")
+                time.sleep(1)
+                continue
+
+            logger.info("🔍 Ejecutando ciclo de análisis activo...")
             real_equity = CAPITAL_INICIAL
             buying_power = real_equity
             positions_list = []
 
             if LIVE_ENABLED:
-                acc = get_account()
-                if acc:
-                    real_equity = float(acc.get('nav', real_equity))
-                    buying_power = float(acc.get('margen_libre', real_equity))
-                positions_list = get_positions()
+                try:
+                    acc = get_account()
+                    if acc:
+                        real_equity = float(acc.get('nav', real_equity))
+                        buying_power = float(acc.get('margen_libre', real_equity))
+                    positions_list = get_positions()
+                except Exception as e:
+                    logger.warning(f"⚠️ Error recuperando info de cuenta (usando fallback): {e}")
 
-            # Check Circuit Breaker
-            if not IS_ALPACA and get_circuit_breaker_status():
-                logger.warning("📉 CIRCUIT BREAKER activo. Saltando ciclo para evitar spam.")
-                push_event('warn', "Circuit Breaker Active: Skipping cycle to prevent spam", socketio)
-                time.sleep(60)
-                continue
+                # Limpiar órdenes atascadas antes de procesar las señales
+                try:
+                    limpiar_ordenes_atascadas(socketio)
+                except:
+                    pass
 
-            logger.info(f"--- 🌀 CICLO: Equity ${real_equity} | BP ${buying_power} | Posiciones: {len(positions_list)} ---")
+                # Check Circuit Breaker
+                if not IS_ALPACA and get_circuit_breaker_status():
+                    logger.warning("📉 CIRCUIT BREAKER activo. Saltando ciclo para evitar spam.")
+                    push_event('warn', "Circuit Breaker Active: Skipping cycle to prevent spam", socketio)
+                    time.sleep(60)
+                    continue
+
+            # --- Market Hours Check (Only for Alpaca Stocks) ---
+            market_is_open = True
+            if IS_ALPACA:
+                market_is_open = alpaca_client.es_mercado_abierto()
+
+            logger.info(f"--- 🌀 CICLO: Equity ${real_equity} | BP ${buying_power} | Posiciones: {len(positions_list)} | Mercado: {'Abierto' if market_is_open else 'Cerrado'} ---")
             push_event('info', f"Cycle: Equity ${real_equity:,.2f} | BP ${buying_power:,.2f} | {len(positions_list)} pos", socketio)
 
             for symbol in WATCHLIST:
                 try:
                     is_crypto = any(q in symbol.upper() for q in ['USD', 'USDT', 'USDC', '/'])
+
+                    # Check market hours for stocks
+                    if not is_crypto and not market_is_open:
+                        continue
                     
-                    datos = get_data(symbol)
+                    if is_crypto and not CRYPTO_TRADING_ENABLED:
+                        continue
+                    
+                    try:
+                        datos = get_data(symbol)
+                    except Exception as e:
+                        logger.error(f"❌ Error obteniendo datos para {symbol}: {e}")
+                        continue
+
                     if datos is None or datos.empty:
                         logger.warning(f"⚠️ {symbol}: Sin datos, saltando.")
                         push_event('warn', f"{symbol}: No data, skipping", socketio)
                         continue
 
                     # Unificamos todo bajo el mismo TradingBot (que ya tiene logica separada interna)
-                    bot = TradingBot(datos, real_equity, RIESGO_POR_OPERACION, MIN_CONFLUENCIAS, is_crypto=is_crypto)
+                    riesgo_actual = RIESGO_CRYPTO if is_crypto else RIESGO_POR_OPERACION
+                    bot = TradingBot(datos, real_equity, riesgo_actual, MIN_CONFLUENCIAS, is_crypto=is_crypto)
                     bot.ejecutar()
                     dec = bot.decision
                     dir_ = dec['direccion']
@@ -249,7 +384,9 @@ def trading_loop(socketio=None):
                         'dir': dir_,
                         'reason': reason,
                     }
-                    price = float(datos['close'].iloc[-1])
+                    # Intentar usar el precio de WebSocket (si está disponible) para mayor precisión
+                    ws_price = alpaca_data_stream.get_latest_price(symbol)
+                    price = ws_price if ws_price else float(datos['close'].iloc[-1])
 
 
                     norm_sym = symbol.replace('/', '').upper()
@@ -302,8 +439,6 @@ def trading_loop(socketio=None):
                                     if IS_ALPACA:
                                         cancel_orders_for_symbol(symbol)
                                         alpaca_client.cerrar_posicion(symbol)
-                                    elif IS_OANDA:
-                                        oanda_client.cerrar_posicion(symbol)
                                     else:
                                         place_order(symbol, current_pos['unidades'], 'sell' if is_long else 'buy')
                                     
@@ -326,10 +461,13 @@ def trading_loop(socketio=None):
                             sl = ges.get('stop_loss')
                             tp = ges.get('take_profit')
 
-                            # Limit to 10% equity per trade
-                            max_val = buying_power * 0.10
-                            if (raw_qty * price) > max_val:
-                                raw_qty = max_val / price
+                            # --- PDT & Safety Check ---
+                            if not is_crypto and real_equity < 25000:
+                                pdt_count = acc.get('pdt_reset', 0) if acc else 0
+                                if pdt_count >= 3:
+                                    logger.warning(f"⚠️ {symbol}: BLOQUEO PDT. {pdt_count} day trades detectados con cuenta < $25k. Operación cancelada.")
+                                    push_event('warn', f"PDT Limit Warning: {symbol} entry blocked", socketio)
+                                    continue
 
                             qty = int(raw_qty) if (IS_ALPACA and dir_ == 'SHORT') else round(raw_qty, 4)
 
@@ -347,20 +485,12 @@ def trading_loop(socketio=None):
                                     logger.error(f"Order failed for {symbol}: {e_o}")
                                     push_event('error', f"Order failed {symbol}: {e_o}", socketio)
 
-                    # 4. History Update (Scans)
-                    if dir_ not in ['NEUTRAL', 'NO_TRADE']:
-                        state.BOT_HISTORY.insert(0, {
-                            'time': datetime.datetime.now().isoformat(),
-                            'sym': symbol, 'type': f"{dir_}", 'price': price, 'reason': reason
-                        })
+                except Exception as e_sym:
+                    logger.error(f"Error procesando {symbol}: {e_sym}")
 
-                    if len(state.BOT_HISTORY) > 100:
-                        state.BOT_HISTORY.pop()
-
-                except Exception as e:
-                    logger.error(f"Error {symbol}: {e}")
-                    push_event('error', f"Error processing {symbol}: {e}", socketio)
-
+            # Espera entre ciclos completos para no saturar
             time.sleep(30)
-        else:
-            time.sleep(1) # Check toggle state more frequently
+
+        except Exception as e_loop:
+            logger.error(f"❌ Error fatal en el bucle principal: {e_loop}")
+            time.sleep(5)

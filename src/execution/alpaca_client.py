@@ -1,37 +1,56 @@
+
 import os
-import alpaca_trade_api as tradeapi
+import backoff
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import GetOrdersRequest, MarketOrderRequest, LimitOrderRequest, TakeProfitRequest, StopLossRequest
+from alpaca.trading.enums import OrderSide, TimeInForce, OrderClass, AssetClass, TradeActivityType
+from alpaca.trading.requests import GetOrderByIdRequest, ClosePositionRequest, GetPortfolioHistoryRequest
+# Import dinámico para evitar fallos de versión
+ActivitiesRequestClass = None
+import alpaca.trading.requests as alp_req
+for item in dir(alp_req):
+    if "Activity" in item:
+        ActivitiesRequestClass = getattr(alp_req, item)
+        break
 
-from src.core.config import ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_BASE_URL
+from src.core.config import ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_PAPER, ALPACA_BASE_URL
+from src.core.logger import logger
 
-def _get_api():
-    return tradeapi.REST(ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_BASE_URL, api_version='v2')
+_TRADING_CLIENT = None
 
+def _get_trading_client():
+    global _TRADING_CLIENT
+    if _TRADING_CLIENT is None:
+        _TRADING_CLIENT = TradingClient(ALPACA_API_KEY, ALPACA_SECRET_KEY, paper=ALPACA_PAPER)
+    return _TRADING_CLIENT
+
+@backoff.on_exception(backoff.expo, Exception, max_tries=5, giveup=lambda e: not any(x in str(e) for x in ["429", "SSL", "connection", "ConnectionPool", "Timeout"]))
 def obtener_cuenta():
     """
-    Devuelve resumen de la cuenta Alpaca (Paper/Live).
+    Devuelve resumen de la cuenta Alpaca usando alpaca-py.
     """
     try:
-        api = _get_api()
-        account = api.get_account()
+        client = _get_trading_client()
+        account = client.get_account()
         
-        # Calculamos el P/L total aproximado (Equity actual vs Equity de ayer)
         equity = float(account.equity)
         last_equity = float(account.last_equity)
         pl_total = equity - last_equity
 
         return {
-            'id': account.id,
+            'id': str(account.id),
             'moneda': account.currency,
             'balance': float(account.cash),
             'nav': equity,
             'pl': pl_total,
-            'pl_abierto': float(getattr(account, 'unrealized_intraday_pl', 0)),
+            'pl_abierto': float(getattr(account, 'unrealized_pl', 0) or 0),
             'margen_libre': float(account.buying_power),
             'posiciones': 0, 
             'apalancamiento': account.multiplier,
+            'pdt_reset': account.daytrade_count, # Útil para controlar PDT
         }
     except Exception as e:
-        print(f"Error en obtener_cuenta: {e}")
+        logger.error(f"Error en obtener_cuenta: {e}")
         return None
 
 def obtener_posiciones_abiertas():
@@ -39,23 +58,11 @@ def obtener_posiciones_abiertas():
     Devuelve lista de trades abiertos.
     """
     try:
-        api = _get_api()
-        positions = api.list_positions()
+        client = _get_trading_client()
+        positions = client.get_all_positions()
         
-        # Intentamos obtener actividades recientes para aproximar la fecha de entrada
-        fills = {}
-        try:
-            activities = api.get_activities(activity_types=['FILL'], page_size=50)
-            for f in activities:
-                if f.symbol not in fills:
-                    fills[f.symbol] = f.transaction_time
-        except Exception as e:
-            print(f"DEBUG: Error recuperando fills recientes en historial abierto: {e}")
-            pass
-
         res = []
         for p in positions:
-            entry_time = fills.get(p.symbol)
             res.append({
                 'instrumento': p.symbol,
                 'direccion': 'LONG' if float(p.qty) > 0 else 'SHORT',
@@ -64,211 +71,242 @@ def obtener_posiciones_abiertas():
                 'precio_actual': float(p.current_price),
                 'pl': float(p.unrealized_pl),
                 'pl_pct': float(p.unrealized_plpc) * 100,
-                'valor_total': float(p.cost_basis),
-                'fecha_entrada': entry_time.isoformat() if entry_time else None
+                'valor_total': float(p.market_value),
+                'fecha_entrada': None # alpaca-py position object doesn't have entry time directly
             })
         return res
     except Exception as e:
-        print(f"Error en obtener_posiciones: {e}")
+        logger.error(f"Error en obtener_posiciones: {e}")
         return []
 
 def obtener_posiciones_cerradas():
     """
-    Obtiene el historial de posiciones cerradas recientemente agrupando 'fills' 
-    para evitar duplicados visuales y mostrar el P/L real por operación.
+    Obtiene el historial de posiciones cerradas usando actividades de trade.
     """
     try:
         from dateutil import parser
-        api = _get_api()
-        # Activity types en el SDK suelen preferir un string separado por comas
-        # o un solo string si es un solo tipo. 'FILL' es el estándar para trades.
-        tipos = 'FILL' 
+        client = _get_trading_client()
         
-        # Aumentamos el límite para permitir encontrar el 'BUY' de un 'SELL' antiguo
-        activities = api.get_activities(activity_types=tipos, page_size=100)
+        # Obtenemos actividades de tipo FILL (ejecuciones)
+        activities = []
+        try:
+            # Intentar métodos comunes según versión de SDK
+            if hasattr(client, 'get_account_activities'):
+                req = ActivitiesRequestClass(activity_types=[TradeActivityType.FILL]) if ActivitiesRequestClass else {"activity_types": "FILL"}
+                activities = client.get_account_activities(filter=req) if ActivitiesRequestClass else client.get_account_activities(req)
+            elif hasattr(client, 'get_activities'):
+                activities = client.get_activities(activity_types="FILL")
+        except:
+            # Fallback silencioso para no romper el ciclo del bot
+            activities = []
         
-        if not activities:
-            return []
-
-        agrupados = []
-        # Procesamos todas las actividades de 'FILL'
+        raw_fills = []
         for f in activities:
-            symbol = getattr(f, 'symbol', '')
-            side = getattr(f, 'side', '').upper()
-            qty = float(getattr(f, 'qty', 0))
-            price = float(getattr(f, 'price', 0))
-            
-            if not symbol or not side or qty <= 0: continue
-            
-            t = getattr(f, 'transaction_time', None)
-            if not t: continue
-            if isinstance(t, str):
-                t = parser.parse(t)
-            
-            agrupados.append({
-                's': symbol,
-                'side': side,
-                'q': qty,
-                'p': price,
-                'time': t
+            raw_fills.append({
+                's': f.symbol,
+                'side': f.side.name if hasattr(f.side, 'name') else str(f.side),
+                'q': float(f.qty),
+                'p': float(f.price),
+                't': f.transaction_time
             })
-
-        # Ordenar por tiempo (ascendente) para reconstruir el historial
-        agrupados.sort(key=lambda x: x['time'])
-
-        res = []
-        # Diccionario para trackear lotes de compra por símbolo (FIFO)
-        inventory = {} 
-
-        for item in agrupados:
-            sym = item['s']
-            if item['side'] == 'BUY':
-                if sym not in inventory: inventory[sym] = []
-                inventory[sym].append(item)
-            elif item['side'] == 'SELL':
-                # Intentamos buscar el precio de entrada (matching)
-                entry_price = None
-                if sym in inventory and len(inventory[sym]) > 0:
-                    # Usamos el primer lote de compra (FIFO) para el matching
-                    entry_batch = inventory[sym].pop(0)
-                    entry_price = entry_batch['p']
-                
-                pl = (item['p'] - entry_price) * item['q'] if entry_price else 0
-                
-                res.insert(0, {
-                    's': sym,
-                    'side': 'SELL',
-                    'q': round(item['q'], 4),
-                    'p': round(item['p'], 4),
-                    'entry': round(entry_price, 4) if entry_price else None,
-                    'pl': round(pl, 2),
-                    'time': item['time'].isoformat()
-                })
         
-        # Si NO hay cierres calculados (res vacío), mostramos las actividades brutas como fallback
-        if not res:
-            return [{ 
-                's': i['s'], 
-                'side': i['side'], 
-                'q': round(i['q'], 4), 
-                'p': round(i['p'], 4), 
-                'pl': 0, 
-                'time': i['time'].isoformat() 
-            } for i in sorted(agrupados, key=lambda x: x['time'], reverse=True)[:20]]
+        # Ordenar cronológicamente para el proceso FIFO
+        raw_fills.sort(key=lambda x: x['t'])
+
+        queues = {}
+        res_closed = []
+        res_opened = []
+
+        for f in raw_fills:
+            s = f['s']
+            if s not in queues:
+                queues[s] = {'longs': [], 'shorts': []}
             
-        return res[:20]
+            side = f['side'].upper()
+            q_to_process = f['q']
+            p_fill = f['p']
+            t_fill = f['t']
+
+            if side == 'BUY':
+                while q_to_process > 0 and queues[s]['shorts']:
+                    lot = queues[s]['shorts'][0]
+                    match_q = min(q_to_process, lot['q'])
+                    pl_unit = lot['p'] - p_fill
+                    res_closed.append({
+                        's': s, 'side': 'BUY (COVER)', 'q': round(match_q, 4),
+                        'p': round(p_fill, 4), 'entry': round(lot['p'], 4),
+                        'pl': round(pl_unit * match_q, 2), 'time': t_fill.isoformat()
+                    })
+                    q_to_process -= match_q
+                    lot['q'] -= match_q
+                    if lot['q'] <= 1e-8: queues[s]['shorts'].pop(0)
+
+                if q_to_process > 0:
+                    queues[s]['longs'].append({'q': q_to_process, 'p': p_fill, 't': t_fill})
+                    res_opened.append({
+                        's': s, 'side': 'BUY', 'q': round(q_to_process, 4),
+                        'p': round(p_fill, 4), 'time': t_fill.isoformat()
+                    })
+
+            elif side in ['SELL', 'SELL_SHORT']:
+                while q_to_process > 0 and queues[s]['longs']:
+                    lot = queues[s]['longs'][0]
+                    match_q = min(q_to_process, lot['q'])
+                    pl_unit = p_fill - lot['p']
+                    res_closed.append({
+                        's': s, 'side': 'SELL', 'q': round(match_q, 4),
+                        'p': round(p_fill, 4), 'entry': round(lot['p'], 4),
+                        'pl': round(pl_unit * match_q, 2), 'time': t_fill.isoformat()
+                    })
+                    q_to_process -= match_q
+                    lot['q'] -= match_q
+                    if lot['q'] <= 1e-8: queues[s]['longs'].pop(0)
+
+                if q_to_process > 0:
+                    queues[s]['shorts'].append({'q': q_to_process, 'p': p_fill, 't': t_fill})
+                    res_opened.append({
+                        's': s, 'side': side, 'q': round(q_to_process, 4),
+                        'p': round(p_fill, 4), 'time': t_fill.isoformat()
+                    })
+
+        res_closed.reverse()
+        res_opened.reverse()
+        return {'closed': res_closed, 'opened': res_opened}
     except Exception as e:
-        print(f"ERROR en obtener_posiciones_cerradas: {e}")
-        return []
+        logger.error(f"ERROR en obtener_posiciones_cerradas: {e}")
+        return {'closed': [], 'opened': []}
 
 def obtener_ordenes_activas():
     """
-    Devuelve lista de órdenes pendientes (no ejecutadas).
+    Devuelve lista de órdenes pendientes usando TradingClient.
     """
     try:
-        api = _get_api()
-        orders = api.list_orders(status='open', limit=50)
+        client = _get_trading_client()
+        req = GetOrdersRequest(status='open', limit=50)
+        orders = client.get_orders(filter=req)
         return [{
-            'id': o.id,
+            'id': str(o.id),
             'symbol': o.symbol,
             'qty': o.qty,
-            'side': o.side,
-            'type': o.type,
-            'status': o.status,
+            'side': o.side.name,
+            'type': o.order_type.name,
+            'status': o.status.name,
             'created_at': o.created_at.isoformat()
         } for o in orders]
     except Exception as e:
-        print(f"Error en obtener_ordenes: {e}")
+        logger.error(f"Error en obtener_ordenes: {e}")
         return []
 
-def cancelar_todas_las_ordenes():
+def cancelar_ordenes_por_simbolo(symbol):
     """
-    Cancela todas las órdenes pendientes en la cuenta.
+    Cancela todas las órdenes abiertas para un símbolo específico.
     """
     try:
-        api = _get_api()
-        api.cancel_all_orders()
+        client = _get_trading_client()
+        norm_sym = symbol.replace('/', '').upper()
+        req = GetOrdersRequest(status='open', symbols=[norm_sym])
+        orders = client.get_orders(filter=req)
+        for o in orders:
+            client.cancel_order_by_id(o.id)
         return True
     except Exception as e:
-        print(f"Error cancelando órdenes: {e}")
+        logger.error(f"Error cancelando órdenes para {symbol}: {e}")
+        return False
+
+def cancelar_todas_las_ordenes():
+    try:
+        client = _get_trading_client()
+        client.cancel_orders()
+        return True
+    except Exception as e:
+        logger.error(f"Error cancelando órdenes: {e}")
         return False
 
 def colocar_orden_mercado(symbol, qty, side, take_profit=None, stop_loss=None):
     """
-    Ejecuta una orden de mercado en Alpaca. 
-    Si hay SL/TP, crea una orden Bracket (excepto para Crypto).
+    Ejecuta una orden de mercado usando alpaca-py.
     """
     try:
-        api = _get_api()
+        client = _get_trading_client()
         
         is_crypto = any(q in symbol.upper() for q in ['USD', 'USDT', 'USDC', '/'])
-        precision = 8 if is_crypto else 2
+        norm_sym = symbol.replace('/', '').upper()
         
-        # Fractional orders MUST be 'day' orders and 'simple' in Alpaca
+        # Fractional check
         is_fractional = float(qty) != int(float(qty))
-        tif = 'day' if (is_fractional and not is_crypto) else 'gtc'
+        tif = TimeInForce.DAY if (is_fractional and not is_crypto) else TimeInForce.GTC
         
-        # Alpaca does NOT support advanced order classes (bracket, oco, etc) for Crypto OR Fractional
-        order_class = 'simple'
-        tp_dict = None
-        sl_dict = None
+        order_class = OrderClass.SIMPLE
+        tp_data = None
+        sl_data = None
         
         if (take_profit or stop_loss) and not is_crypto and not is_fractional:
-            order_class = 'bracket'
+            order_class = OrderClass.BRACKET
             if take_profit:
-                tp_dict = dict(limit_price=round(float(take_profit), precision))
+                tp_data = TakeProfitRequest(limit_price=round(float(take_profit), 2))
             if stop_loss:
-                sl_dict = dict(stop_price=round(float(stop_loss), precision))
-        elif (take_profit or stop_loss) and (is_crypto or is_fractional):
-            reason_skip = "Crypto" if is_crypto else "Fractional"
-            print(f"INFO: SL/TP ignorado para {symbol} (Alpaca no permite bracket orders en {reason_skip} assets)")
+                sl_data = StopLossRequest(stop_price=round(float(stop_loss), 2))
 
-        order = api.submit_order(
-            symbol=symbol.replace('/', ''), # Alpaca crypto icons don't like '/'
+        req = MarketOrderRequest(
+            symbol=norm_sym,
             qty=qty,
-            side=side.lower(),
-            type='market',
+            side=OrderSide.BUY if side.lower() == 'buy' else OrderSide.SELL,
             time_in_force=tif,
             order_class=order_class,
-            take_profit=tp_dict,
-            stop_loss=sl_dict,
+            take_profit=tp_data,
+            stop_loss=sl_data
         )
+
+        order = client.submit_order(order_data=req)
         return order
     except Exception as e:
-        print(f"Error colocando orden en {symbol}: {e}")
+        logger.error(f"Error colocando orden en {symbol}: {e}")
         raise e
 
 def cerrar_posicion(symbol):
-    """
-    Cierra completamente una posición abierta para el símbolo indicado.
-    """
     try:
-        api = _get_api()
-        # Alpaca crypto icons don't like '/'
+        client = _get_trading_client()
         norm_sym = symbol.replace('/', '').upper()
-        return api.close_position(norm_sym)
+        # En alpaca-py close_position requiere symbol o id
+        return client.close_position(norm_sym)
     except Exception as e:
-        print(f"Error cerrando posición en {symbol}: {e}")
+        logger.error(f"Error cerrando posición en {symbol}: {e}")
         raise e
 
 def obtener_historial_cartera(periodo='1M', timeframe='1D'):
-    """
-    Devuelve el historial del valor de la cartera de Alpaca.
-    Periodos: 1D, 1W, 1M, 3M, 1Y, ALL
-    Timeframes: 1Min, 5Min, 15Min, 1H, 1D
-    """
     try:
-        api = _get_api()
-        hist = api.get_portfolio_history(period=periodo, timeframe=timeframe)
+        client = _get_trading_client()
+        req = GetPortfolioHistoryRequest(period=periodo, timeframe=timeframe)
+        try:
+            # En algunas versiones es filter_data, en otras es filter, 
+            # y en otras es puramente posicional.
+            hist = client.get_portfolio_history(req)
+        except Exception:
+            try:
+                hist = client.get_portfolio_history(filter_data=req)
+            except:
+                hist = client.get_portfolio_history(filter=req)
         
-        # Formatear para que el frontend lo entienda facilmente
+        
         res = []
         for i in range(len(hist.timestamp)):
             res.append({
-                'time': hist.timestamp[i], # Int (epoch)
+                'time': hist.timestamp[i],
                 'value': float(hist.equity[i])
             })
         return res
     except Exception as e:
-        print(f"Error en obtener_historial_cartera: {e}")
+        logger.error(f"Error en obtener_historial_cartera: {e}")
         return []
+
+def es_mercado_abierto():
+    """
+    Comprueba si el mercado de acciones está abierto actualmente.
+    """
+    try:
+        client = _get_trading_client()
+        clock = client.get_clock()
+        return clock.is_open
+    except Exception as e:
+        logger.error(f"Error comprobando reloj del mercado: {e}")
+        return True # Fallback por seguridad

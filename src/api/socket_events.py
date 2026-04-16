@@ -6,15 +6,13 @@ from src.bot.engine import state, push_event, build_summary
 
 @socketio.on('connect')
 def handle_connect():
-    logger.info(f"🔌 WebSocket client connected")
+    # logger.info(f"🔌 WebSocket client connected")
     push_event('info', 'Client connected', socketio)
-    # Send initial state immediately
-    data = build_summary()
-    socketio.emit('data_update', data)
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    logger.info(f"🔌 WebSocket client disconnected")
+    # logger.info(f"🔌 WebSocket client disconnected")
+    pass
 
 @socketio.on('ping_latency')
 def handle_ping():

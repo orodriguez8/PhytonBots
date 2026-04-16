@@ -10,8 +10,8 @@ def create_app():
     # Current file is in src/api/server.py, so root is two levels up
     root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     template_dir = os.path.join(root_dir, 'web', 'templates')
+    # Since we moved static files to templates/ for Amplify compatibility
     static_dir = os.path.join(root_dir, 'web', 'static')
-    
     app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'mera-victorino-pro-3.0')
     CORS(app)
@@ -19,7 +19,7 @@ def create_app():
     socketio = SocketIO(
         app,
         cors_allowed_origins="*",
-        async_mode='threading',
+        async_mode='eventlet',
         ping_timeout=30,
         ping_interval=15,
         logger=False,

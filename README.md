@@ -47,3 +47,11 @@ La aplicación arrancará automáticamente en el puerto 7860 y mostrará el pane
 - `scripts/`: Utilidades y archivos legacy.
 
 Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
+
+
+<!-- Instalar: sudo yum install screen -y
+   Crear sesión: screen -S tradingbot
+   Ejecutar tu app: python3 main.py
+   Desacoplar (Salir sin cerrar): Presiona Ctrl + A y luego la tecla D. (Ya puedes cerrar la terminal).
+   Volver a entrar: Cuando vuelvas a abrir la terminal, escribe screen -r tradingbot. 
+-->
