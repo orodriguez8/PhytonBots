@@ -1,18 +1,13 @@
 import os
 import backoff
+from datetime import datetime, timezone
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import (
     GetOrdersRequest, MarketOrderRequest, LimitOrderRequest, 
     TakeProfitRequest, StopLossRequest, GetPortfolioHistoryRequest,
     ClosePositionRequest
 )
-try:
-    from alpaca.trading.requests import GetAccountActivitiesRequest
-except ImportError:
-    # Fallback para versiones muy específicas o cambios súbitos
-    from alpaca.trading.requests import GetOrdersRequest as GetAccountActivitiesRequest
-
-from alpaca.trading.enums import OrderSide, TimeInForce, OrderClass, AssetClass, TradeActivityType
+from alpaca.trading.enums import OrderSide, TimeInForce, OrderClass, AssetClass
 from src.core.config import ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_PAPER, ALPACA_BASE_URL
 from src.core.logger import logger
 
@@ -91,43 +86,94 @@ def obtener_posiciones_abiertas():
 @retry_strategy
 def obtener_posiciones_cerradas():
     """
-    Obtiene el historial de posiciones cerradas usando actividades de trade.
+    Obtiene el historial de posiciones cerradas via REST directo.
+
+    NOTA: TradingClient de alpaca-py NO expone get_account_activities().
+    Usamos client.get() heredado de RESTClient para llamar directamente
+    al endpoint /account/activities/FILL que devuelve una lista de dicts.
+    Fallback: órdenes cerradas/ejecutadas vía get_orders(status='closed').
     """
     try:
         client = _get_trading_client()
-        
-        # Obtenemos actividades de tipo FILL (ejecuciones)
-        # Usamos GetAccountActivitiesRequest si está disponible, sino pasamos dict
-        try:
-            req = GetAccountActivitiesRequest(activity_types=[TradeActivityType.FILL])
-            activities = client.get_account_activities(filter=req)
-        except Exception:
-            try:
-                activities = client.get_account_activities({"activity_types": "FILL"})
-            except Exception as e:
-                logger.debug(f"No se pudieron recuperar actividades: {e}")
-                activities = []
-        
-        raw_fills = []
-        for f in activities:
-            try:
-                # Normalizar el side
-                side_val = f.side.name if hasattr(f.side, 'name') else str(f.side)
-                
-                raw_fills.append({
-                    's': f.symbol,
-                    'side': side_val.upper(),
-                    'q': float(f.qty),
-                    'p': float(f.price),
-                    't': f.transaction_time
-                })
-            except AttributeError:
-                continue
-        
-        # Ordenar cronológicamente
-        raw_fills.sort(key=lambda x: x['t'])
+        raw_activities = []
 
-        queues = {}
+        # ── Intento 1: REST directo /account/activities/FILL ─────────────────
+        try:
+            raw_activities = client.get(
+                "/account/activities/FILL",
+                {"page_size": 100, "direction": "desc"}
+            )
+            if not isinstance(raw_activities, list):
+                raw_activities = []
+            logger.debug(f"[FILLS] Recuperados {len(raw_activities)} registros vía REST directo")
+        except Exception as e1:
+            logger.debug(f"[FILLS] Endpoint directo falló ({e1}), probando fallback...")
+
+            # ── Intento 2: órdenes filled como historial alternativo ──────────
+            try:
+                req = GetOrdersRequest(status='closed', limit=100)
+                orders = client.get_orders(filter=req)
+                for o in orders:
+                    filled_qty  = float(getattr(o, 'filled_qty', None)  or 0)
+                    filled_price = float(getattr(o, 'filled_avg_price', None) or 0)
+                    if filled_qty <= 0 or filled_price <= 0:
+                        continue
+                    side_raw = getattr(o, 'side', None)
+                    side_str = side_raw.name if hasattr(side_raw, 'name') else str(side_raw)
+                    t_raw = getattr(o, 'filled_at', None) or getattr(o, 'updated_at', None)
+                    raw_activities.append({
+                        'symbol': o.symbol,
+                        'side': side_str,
+                        'qty': str(filled_qty),
+                        'price': str(filled_price),
+                        'transaction_time': t_raw.isoformat() if hasattr(t_raw, 'isoformat') else str(t_raw),
+                    })
+                logger.debug(f"[FILLS] Fallback órdenes: {len(raw_activities)} registros")
+            except Exception as e2:
+                logger.warning(f"[FILLS] Ambos métodos fallaron. e1={e1} | e2={e2}")
+                raw_activities = []
+
+        # ── Normalizar cada actividad a raw_fills ─────────────────────────────
+        raw_fills = []
+        for f in raw_activities:
+            try:
+                # La respuesta de /account/activities es una lista de dicts
+                if isinstance(f, dict):
+                    s          = f.get('symbol', '')
+                    side_val   = str(f.get('side', '')).upper()
+                    qty        = float(f.get('qty', 0) or 0)
+                    price      = float(f.get('price', 0) or 0)
+                    t_raw      = f.get('transaction_time') or f.get('created_at', '')
+                else:
+                    # Objeto modelo (raro, pero por compatibilidad)
+                    s          = getattr(f, 'symbol', '')
+                    side_raw   = getattr(f, 'side', '')
+                    side_val   = side_raw.name.upper() if hasattr(side_raw, 'name') else str(side_raw).upper()
+                    qty        = float(getattr(f, 'qty', 0) or 0)
+                    price      = float(getattr(f, 'price', 0) or 0)
+                    t_raw      = getattr(f, 'transaction_time', None) or getattr(f, 'filled_at', None)
+
+                if not s or qty <= 0 or price <= 0:
+                    continue
+
+                # Normalizar timestamp → datetime con tz
+                if isinstance(t_raw, str) and t_raw:
+                    t_parsed = datetime.fromisoformat(t_raw.replace('Z', '+00:00'))
+                elif hasattr(t_raw, 'isoformat'):
+                    t_parsed = t_raw if t_raw.tzinfo else t_raw.replace(tzinfo=timezone.utc)
+                else:
+                    t_parsed = datetime.now(timezone.utc)
+
+                raw_fills.append({'s': s, 'side': side_val, 'q': qty, 'p': price, 't': t_parsed})
+            except (AttributeError, TypeError, ValueError) as e:
+                logger.debug(f"[FILLS] Error procesando entrada: {e}")
+                continue
+
+        # ── Ordenar cronológicamente (FIFO) ───────────────────────────────────
+        raw_fills.sort(key=lambda x: x['t'])
+        logger.debug(f"[FILLS] {len(raw_fills)} fills válidos a procesar")
+
+        queues    = {}
         res_closed = []
         res_opened = []
 
@@ -135,26 +181,28 @@ def obtener_posiciones_cerradas():
             s = f['s']
             if s not in queues:
                 queues[s] = {'longs': [], 'shorts': []}
-            
-            side = f['side']
+
+            side        = f['side']
             q_to_process = f['q']
-            p_fill = f['p']
-            t_fill = f['t']
+            p_fill       = f['p']
+            t_fill       = f['t']
 
             if side == 'BUY':
-                # Intentar cerrar shorts primero
+                # Cerrar shorts pendientes primero (BUY to COVER)
                 while q_to_process > 0 and queues[s]['shorts']:
-                    lot = queues[s]['shorts'][0]
+                    lot     = queues[s]['shorts'][0]
                     match_q = min(q_to_process, lot['q'])
                     pl_unit = lot['p'] - p_fill
                     res_closed.insert(0, {
                         's': s, 'side': 'BUY (COVER)', 'q': round(match_q, 4),
                         'p': round(p_fill, 4), 'entry': round(lot['p'], 4),
-                        'pl': round(pl_unit * match_q, 2), 'time': t_fill.isoformat()
+                        'pl': round(pl_unit * match_q, 2),
+                        'time': t_fill.isoformat()
                     })
                     q_to_process -= match_q
-                    lot['q'] -= match_q
-                    if lot['q'] <= 1e-8: queues[s]['shorts'].pop(0)
+                    lot['q']     -= match_q
+                    if lot['q'] <= 1e-8:
+                        queues[s]['shorts'].pop(0)
 
                 if q_to_process > 0:
                     queues[s]['longs'].append({'q': q_to_process, 'p': p_fill, 't': t_fill})
@@ -164,19 +212,21 @@ def obtener_posiciones_cerradas():
                     })
 
             elif side in ['SELL', 'SELL_SHORT']:
-                # Intentar cerrar longs primero
+                # Cerrar longs pendientes primero
                 while q_to_process > 0 and queues[s]['longs']:
-                    lot = queues[s]['longs'][0]
+                    lot     = queues[s]['longs'][0]
                     match_q = min(q_to_process, lot['q'])
                     pl_unit = p_fill - lot['p']
                     res_closed.insert(0, {
                         's': s, 'side': 'SELL', 'q': round(match_q, 4),
                         'p': round(p_fill, 4), 'entry': round(lot['p'], 4),
-                        'pl': round(pl_unit * match_q, 2), 'time': t_fill.isoformat()
+                        'pl': round(pl_unit * match_q, 2),
+                        'time': t_fill.isoformat()
                     })
                     q_to_process -= match_q
-                    lot['q'] -= match_q
-                    if lot['q'] <= 1e-8: queues[s]['longs'].pop(0)
+                    lot['q']     -= match_q
+                    if lot['q'] <= 1e-8:
+                        queues[s]['longs'].pop(0)
 
                 if q_to_process > 0:
                     queues[s]['shorts'].append({'q': q_to_process, 'p': p_fill, 't': t_fill})
@@ -185,6 +235,7 @@ def obtener_posiciones_cerradas():
                         'p': round(p_fill, 4), 'time': t_fill.isoformat()
                     })
 
+        logger.info(f"[FILLS] Resultado: {len(res_closed)} cerradas, {len(res_opened)} abiertas")
         return {'closed': res_closed, 'opened': res_opened}
     except Exception as e:
         logger.error(f"ERROR en obtener_posiciones_cerradas: {e}")
